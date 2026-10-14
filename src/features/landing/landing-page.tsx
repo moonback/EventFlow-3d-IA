@@ -1,7 +1,7 @@
 import "@fontsource-variable/big-shoulders-stencil-display";
 import "@fontsource-variable/jetbrains-mono";
 import "./landing.css";
-import { ArrowDown, ArrowRight, Boxes, Crosshair, Database, Mic, MousePointerClick, ShieldCheck } from "lucide-react";
+import { ArrowDown, ArrowRight, Crosshair, Database, Mic, MousePointerClick, ShieldCheck } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import type { CSSProperties } from "react";
@@ -103,8 +103,8 @@ export function LandingPage({ signedIn }: { signedIn: boolean }) {
       <header className="fixed inset-x-0 top-0 z-30 bg-[linear-gradient(to_bottom,rgb(14_11_26/0.9),rgb(14_11_26/0.55)_60%,transparent)] backdrop-blur-[2px]">
         <div className="mx-auto flex h-16 max-w-[1400px] items-center gap-6 px-4 sm:px-8">
           <Link href="/" className="flex items-center gap-2.5">
-            <span className="flex size-8 items-center justify-center rounded-lg bg-[var(--lp-amber)] text-[#1b1206]">
-              <Boxes className="size-4" aria-hidden />
+            <span className="flex size-8 items-center justify-center overflow-hidden rounded-lg bg-[var(--lp-amber)]">
+              <Image src="/Images/logo.png" alt="" width={32} height={32} className="size-full object-contain" priority />
             </span>
             <span className="lp-stencil text-xl">EventFlow 3D</span>
           </Link>
