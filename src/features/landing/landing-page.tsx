@@ -1,20 +1,68 @@
 import "@fontsource-variable/big-shoulders-stencil-display";
 import "@fontsource-variable/jetbrains-mono";
 import "./landing.css";
-import { ArrowDown, ArrowRight, Crosshair, Database, Mic, MousePointerClick, ShieldCheck } from "lucide-react";
+import { ArrowDown, ArrowRight, Check, ChevronDown, Crosshair, Database, Menu, Mic, MousePointerClick, ShieldCheck } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import type { CSSProperties } from "react";
 import { CUES } from "./cues";
+import { CountUp, ScrollFader, SpotlightTracker } from "./landing-motion";
 import { CueConsole, CueHud, CueObserver, RevealObserver, StageBackdrop, TiltFrame } from "./stage-backdrop";
 
 const NAV = [
+  { href: "#constat", label: "Pourquoi" },
   { href: "#conduite", label: "La conduite" },
   { href: "#plateau", label: "Le monde 3D" },
   { href: "#eric", label: "Eric" },
   { href: "#modules", label: "Modules" },
   { href: "#garanties", label: "Garanties" },
-  { href: "#demarrer", label: "Démarrer" },
+  { href: "#questions", label: "Questions" },
+];
+
+/** Ce que l'agence quitte, ce qu'elle trouve dans EventFlow (section « Le constat »). */
+const BEFORE_AFTER = [
+  { before: "Le stock dans un tableur que personne n'a mis à jour", after: "Un stock à jour à chaque mouvement, qui ne passe jamais sous zéro" },
+  { before: "Les disponibilités de l'équipe dans un groupe WhatsApp", after: "Des missions acceptées sur le portail, sans création de compte" },
+  { before: "Le devis sous Word, la facture dans un autre logiciel", after: "Devis versionné et facture numérotée dans le même dossier" },
+  { before: "Le plan de chargement dans la tête du chauffeur", after: "Un plan de chargement calculé pour chaque véhicule" },
+  { before: "La marge connue trois mois après l'événement", after: "La marge réelle dès le retour du matériel" },
+];
+
+const FIGURES = [
+  { value: 16, label: "modules reliés à une seule base" },
+  { value: 11, label: "rôles prêts à l'emploi" },
+  { value: CUES.length, label: "étapes suivies, de la demande à la facture" },
+  { value: 0, label: "double réservation de matériel" },
+];
+
+/** Bandeau défilant façon mur LED. */
+const TICKER = ["Demandes", "Devis", "Réservations", "Préparation", "Chargement", "Show", "Retour", "Facture", "Marge réelle", "Monde 3D", "Eric"];
+
+const FAQ = [
+  {
+    q: "Faut-il une machine puissante pour le monde 3D ?",
+    a: "Non. La qualité s'adapte à l'appareil, et si la 3D n'est pas disponible, toutes les fonctions restent accessibles depuis les écrans classiques.",
+  },
+  {
+    q: "Peut-on reprendre nos fichiers existants ?",
+    a: "Oui. Catalogue et clients s'importent en CSV à partir d'un modèle fourni ; un aperçu signale les lignes en erreur avant tout import.",
+  },
+  {
+    q: "Nos techniciens et prestataires doivent-ils créer un compte ?",
+    a: "Non. Ils reçoivent un lien vers leur portail pour voir leurs missions, les accepter ou les refuser et déclarer leurs disponibilités.",
+  },
+  {
+    q: "Eric peut-il modifier nos données sans nous ?",
+    a: "Non. Il propose l'action (changer un statut, créer une tâche, déplacer du matériel) et rien n'est enregistré sans votre clic. Il ne voit que ce que votre rôle permet de voir.",
+  },
+  {
+    q: "Fonctionne-t-il hors du navigateur ?",
+    a: "Une application Windows est disponible en plus de la version web, avec les mêmes données.",
+  },
+  {
+    q: "Les données d'une agence sont-elles séparées des autres ?",
+    a: "Oui. L'organisation est déterminée par la session côté serveur et vérifiée à chaque appel, jamais transmise par le navigateur.",
+  },
 ];
 
 /** Mise en route réelle d'une agence (script d'amorçage, invitations, imports, formulaire public). */
@@ -93,20 +141,22 @@ const SHOTS = [
 ];
 
 export function LandingPage({ signedIn }: { signedIn: boolean }) {
-  const cta = signedIn ? { href: "/dashboard", label: "Ouvrir mon espace" } : { href: "/login", label: "Se connecter" };
+  const cta = signedIn ? { href: "/dashboard", label: "Ouvrir mon espace" } : { href: "/register", label: "Créer mon agence" };
+  const secondary = signedIn ? null : { href: "/login", label: "Se connecter" };
   return (
     <div className="lp min-h-dvh">
       <CueObserver />
       <RevealObserver />
+      <SpotlightTracker />
 
       {/* ── En-tête ─────────────────────────────────────────────── */}
-      <header className="fixed inset-x-0 top-0 z-30 bg-[linear-gradient(to_bottom,rgb(14_11_26/0.9),rgb(14_11_26/0.55)_60%,transparent)] backdrop-blur-[2px]">
+      <header data-lp-header className="lp-header fixed inset-x-0 top-0 z-30">
         <div className="mx-auto flex h-16 max-w-[1400px] items-center gap-6 px-4 sm:px-8">
           <Link href="/" className="flex items-center gap-2.5">
             <span className="flex size-8 items-center justify-center overflow-hidden rounded-lg bg-[var(--lp-amber)]">
               <Image src="/Images/logo.png" alt="" width={32} height={32} className="size-full object-contain" priority />
             </span>
-            <span className="lp-stencil text-xl">EventFlow 3D</span>
+            <span className="lp-stencil hidden whitespace-nowrap text-xl min-[420px]:inline">EventFlow 3D</span>
           </Link>
           <nav aria-label="Sections" className="ml-6 hidden items-center gap-6 text-sm text-[var(--lp-dim)] lg:flex">
             {NAV.map((n) => (
@@ -115,10 +165,36 @@ export function LandingPage({ signedIn }: { signedIn: boolean }) {
               </a>
             ))}
           </nav>
-          <Link href={cta.href} className="lp-btn lp-btn-ghost ml-auto !h-10 !px-4 text-sm">
-            {cta.label}
-          </Link>
+          <div className="ml-auto flex items-center gap-2">
+            {secondary ? (
+              <Link href={secondary.href} className="hidden px-3 text-sm text-[var(--lp-dim)] transition-colors hover:text-[var(--lp-chalk)] sm:inline">
+                {secondary.label}
+              </Link>
+            ) : null}
+            <Link href={cta.href} className="lp-btn lp-btn-primary !h-10 !px-4 text-sm">
+              {cta.label}
+            </Link>
+            <details className="lp-menu relative lg:hidden">
+              <summary className="flex size-10 cursor-pointer list-none items-center justify-center rounded-full shadow-[inset_0_0_0_1px_var(--lp-line)]">
+                <Menu className="size-4" aria-hidden />
+                <span className="sr-only">Menu</span>
+              </summary>
+              <nav aria-label="Sections (mobile)" className="absolute right-0 top-12 flex w-56 flex-col rounded-2xl border border-[var(--lp-line)] bg-[var(--lp-deck)] p-2 shadow-2xl">
+                {NAV.map((n) => (
+                  <a key={n.href} href={n.href} className="rounded-lg px-3 py-2 text-sm text-[var(--lp-dim)] hover:bg-white/5 hover:text-[var(--lp-chalk)]">
+                    {n.label}
+                  </a>
+                ))}
+                {secondary ? (
+                  <Link href={secondary.href} className="mt-1 rounded-lg border-t border-[var(--lp-line)] px-3 py-2 text-sm hover:bg-white/5">
+                    {secondary.label}
+                  </Link>
+                ) : null}
+              </nav>
+            </details>
+          </div>
         </div>
+        <ScrollFader />
       </header>
 
       <main>
@@ -140,16 +216,26 @@ export function LandingPage({ signedIn }: { signedIn: boolean }) {
                 </span>
               </h1>
               <div className="mt-8 flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
-                <p className="lp-fade max-w-xl text-lg leading-relaxed text-[var(--lp-chalk)]/85 sm:text-xl" style={{ "--i": 2 } as CSSProperties}>
-                  Matériel, équipes, véhicules, devis et factures dans une seule application. Et votre agence entière en 3D, pour voir où en est chaque
-                  événement d&apos;un coup d&apos;œil — avec Eric, un régisseur virtuel à qui poser vos questions à voix haute.
-                </p>
+                <div className="lp-fade max-w-xl" style={{ "--i": 2 } as CSSProperties}>
+                  <p className="text-lg leading-relaxed text-[var(--lp-chalk)]/85 sm:text-xl">
+                    Remplacez le tableur, le groupe WhatsApp et les devis sous Word par une seule application : matériel, équipes, véhicules, devis et
+                    factures. Votre agence entière en 3D, et Eric, un régisseur virtuel qui vous répond à voix haute.
+                  </p>
+                  <ul className="lp-mono mt-5 flex flex-wrap gap-x-5 gap-y-2 text-[0.72rem] uppercase tracking-[0.12em] text-[var(--lp-dim)]">
+                    {["Aucune double réservation", "Marge réelle par événement", "Web et Windows"].map((t) => (
+                      <li key={t} className="flex items-center gap-1.5">
+                        <Check className="size-3.5 text-[var(--lp-amber)]" aria-hidden />
+                        {t}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
                 <div className="lp-fade flex flex-wrap gap-3" style={{ "--i": 3 } as CSSProperties}>
                   <Link href={cta.href} className="lp-btn lp-btn-primary">
                     {cta.label} <ArrowRight className="size-4" aria-hidden />
                   </Link>
                   <a href="#conduite" className="lp-btn lp-btn-ghost">
-                    Suivre un événement <ArrowDown className="size-4" aria-hidden />
+                    Voir un événement de bout en bout <ArrowDown className="size-4" aria-hidden />
                   </a>
                 </div>
               </div>
@@ -206,6 +292,80 @@ export function LandingPage({ signedIn }: { signedIn: boolean }) {
             </div>
           </section>
         </div>
+
+        {/* ── Bandeau LED ─────────────────────────────────────────── */}
+        <div className="relative z-10 overflow-hidden border-y border-[var(--lp-line)] bg-[var(--lp-deck)] py-5" aria-hidden>
+          <div className="lp-ticker-track flex w-max">
+            {[0, 1].map((copy) => (
+              <ul key={copy} className="flex shrink-0 items-center">
+                {TICKER.map((t, i) => (
+                  <li key={t} className="lp-stencil flex items-center pl-12 text-3xl sm:text-4xl" style={{ color: i % 3 === 0 ? "var(--lp-amber)" : undefined }}>
+                    {t}
+                    <span className="ml-12 inline-block size-1.5 rounded-full bg-[var(--lp-magenta)]" />
+                  </li>
+                ))}
+              </ul>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Le constat : avant / après ─────────────────────────── */}
+        <section id="constat" aria-labelledby="constat-title" className="relative z-10 bg-[var(--lp-velvet)] px-4 py-28 sm:px-8">
+          <div className="mx-auto max-w-[1400px]">
+            <div className="lp-reveal grid gap-6 lg:grid-cols-2 lg:items-end">
+              <div>
+                <p className="lp-eyebrow">Le constat</p>
+                <h2 id="constat-title" className="lp-stencil mt-4 text-[clamp(3rem,7vw,5.5rem)]">
+                  Fini le bricolage
+                </h2>
+              </div>
+              <p className="max-w-lg leading-relaxed text-[var(--lp-dim)] lg:justify-self-end">
+                Une agence événementielle jongle avec cinq outils qui ne se parlent pas. Chaque oubli se paie le jour du show : un câble manquant, un
+                technicien absent, une marge qui fond.
+              </p>
+            </div>
+
+            <div className="mt-14 overflow-hidden rounded-2xl border border-[var(--lp-line)]">
+              <div aria-hidden className="lp-mono hidden grid-cols-2 border-b border-[var(--lp-line)] text-[0.7rem] uppercase tracking-[0.18em] md:grid">
+                <span className="px-7 py-4 text-[var(--lp-dim)]">Aujourd&apos;hui</span>
+                <span className="border-l border-[var(--lp-line)] px-7 py-4 text-[var(--lp-amber)]">Avec EventFlow 3D</span>
+              </div>
+              <ul className="divide-y divide-[var(--lp-line)]">
+                {BEFORE_AFTER.map((row, i) => (
+                  <li key={row.before} className="lp-reveal lp-swap grid md:grid-cols-2" style={{ "--i": i } as CSSProperties}>
+                    <p className="flex items-start gap-3 px-7 pb-2 pt-6 text-[var(--lp-dim)] md:py-6">
+                      <span className="lp-mono mt-0.5 text-xs text-[var(--lp-magenta)]" aria-hidden>
+                        ✕
+                      </span>
+                      <span>
+                        <span className="sr-only">Aujourd&apos;hui : </span>
+                        <span className="lp-strike">{row.before}</span>
+                      </span>
+                    </p>
+                    <p className="lp-after flex items-start gap-3 px-7 pb-6 pt-2 font-medium md:border-l md:border-[var(--lp-line)] md:py-6">
+                      <Check className="mt-0.5 size-4 shrink-0 text-[var(--lp-amber)]" aria-hidden />
+                      <span>
+                        <span className="sr-only">Avec EventFlow 3D : </span>
+                        {row.after}
+                      </span>
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <dl className="mt-20 grid grid-cols-2 gap-x-6 gap-y-12 lg:grid-cols-4">
+              {FIGURES.map((f, i) => (
+                <div key={f.label} className="lp-reveal flex flex-col-reverse justify-end border-t border-[var(--lp-line)] pt-5" style={{ "--i": i } as CSSProperties}>
+                  <dt className="mt-3 max-w-[16rem] text-sm leading-relaxed text-[var(--lp-dim)]">{f.label}</dt>
+                  <dd className="lp-stencil text-[clamp(4rem,9vw,7rem)]">
+                    <CountUp to={f.value} />
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        </section>
 
         {/* ── Le monde 3D ────────────────────────────────────────── */}
         <section id="plateau" aria-labelledby="plateau-title" className="relative z-10 border-t border-[var(--lp-line)] bg-[var(--lp-velvet)] px-4 py-28 sm:px-8">
@@ -327,7 +487,7 @@ export function LandingPage({ signedIn }: { signedIn: boolean }) {
             </div>
             <div className="mt-14 grid gap-10 lg:grid-cols-3">
               {MODULE_GROUPS.map((group, gi) => (
-                <div key={group.title} className="lp-reveal" style={{ "--i": gi } as CSSProperties}>
+                <div key={group.title} className="lp-reveal lp-spot rounded-2xl border border-[var(--lp-line)] bg-[var(--lp-velvet)] p-6" style={{ "--i": gi } as CSSProperties}>
                   <h3 className="lp-mono border-b border-[var(--lp-line)] pb-3 text-xs uppercase tracking-[0.2em] text-[var(--lp-amber)]">{group.title}</h3>
                   <dl className="divide-y divide-[var(--lp-line)]">
                     {group.items.map((m) => (
@@ -360,7 +520,7 @@ export function LandingPage({ signedIn }: { signedIn: boolean }) {
             </div>
             <ul className="mt-14 grid gap-px overflow-hidden rounded-2xl border border-[var(--lp-line)] bg-[var(--lp-line)] md:grid-cols-2 lg:grid-cols-3">
               {GUARANTEES.map((g, i) => (
-                <li key={g.title} className="lp-reveal flex flex-col bg-[var(--lp-velvet)] p-7 transition-colors hover:bg-[#151027]" style={{ "--i": i % 3 } as CSSProperties}>
+                <li key={g.title} className="lp-reveal lp-spot flex flex-col bg-[var(--lp-velvet)] p-7" style={{ "--i": i % 3 } as CSSProperties}>
                   <span className="lp-mono text-[0.7rem] uppercase tracking-[0.16em] text-[var(--lp-amber)]">{g.mechanism}</span>
                   <h3 className="mt-4 text-xl font-semibold tracking-tight">{g.title}</h3>
                   <p className="mt-2 text-sm leading-relaxed text-[var(--lp-dim)]">{g.text}</p>
@@ -417,6 +577,30 @@ export function LandingPage({ signedIn }: { signedIn: boolean }) {
           </div>
         </section>
 
+        {/* ── Questions ──────────────────────────────────────────── */}
+        <section id="questions" aria-labelledby="questions-title" className="relative z-10 border-t border-[var(--lp-line)] bg-[var(--lp-deck)] px-4 py-28 sm:px-8">
+          <div className="mx-auto grid max-w-[1400px] gap-12 lg:grid-cols-[minmax(0,420px)_1fr]">
+            <div className="lp-reveal">
+              <p className="lp-eyebrow">Avant de vous lancer</p>
+              <h2 id="questions-title" className="lp-stencil mt-4 text-[clamp(3rem,7vw,5.5rem)]">
+                Vos questions
+              </h2>
+              <p className="mt-6 leading-relaxed text-[var(--lp-dim)]">Ce que les agences demandent le plus souvent avant de créer leur organisation.</p>
+            </div>
+            <div className="lp-reveal divide-y divide-[var(--lp-line)] border-y border-[var(--lp-line)]">
+              {FAQ.map((item) => (
+                <details key={item.q} className="lp-faq group">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-6 py-5 text-lg font-semibold transition-colors hover:text-[var(--lp-amber)]">
+                    {item.q}
+                    <ChevronDown className="size-5 shrink-0 text-[var(--lp-dim)] transition-transform duration-300 group-open:rotate-180" aria-hidden />
+                  </summary>
+                  <p className="max-w-2xl pb-6 leading-relaxed text-[var(--lp-dim)]">{item.a}</p>
+                </details>
+              ))}
+            </div>
+          </div>
+        </section>
+
         {/* ── Rideau ─────────────────────────────────────────────── */}
         <section aria-labelledby="final-title" className="relative z-10 overflow-hidden border-t border-[var(--lp-line)] bg-[var(--lp-velvet)] px-4 py-32 sm:px-8">
           <div aria-hidden className="pointer-events-none absolute inset-x-0 -top-40 mx-auto h-[520px] max-w-4xl bg-[radial-gradient(ellipse_at_50%_0%,rgb(255_179_71/0.28),transparent_65%)]" />
@@ -428,11 +612,19 @@ export function LandingPage({ signedIn }: { signedIn: boolean }) {
             <p className="mx-auto mt-6 max-w-lg text-lg leading-relaxed text-[var(--lp-dim)]">
               Le matériel est-il chargé, l&apos;équipe confirmée, le devis signé ? Ouvrez EventFlow ou demandez à Eric : la réponse est sur le plateau.
             </p>
-            <div className="mt-10 flex justify-center">
-              <Link href={cta.href} className="lp-btn lp-btn-primary">
+            <div className="mt-10 flex flex-wrap justify-center gap-3">
+              <Link href={cta.href} className="lp-btn lp-btn-primary lp-btn-xl">
                 {cta.label} <ArrowRight className="size-4" aria-hidden />
               </Link>
+              {secondary ? (
+                <Link href={secondary.href} className="lp-btn lp-btn-ghost lp-btn-xl">
+                  {secondary.label}
+                </Link>
+              ) : null}
             </div>
+            <p className="lp-mono mt-6 text-[0.72rem] uppercase tracking-[0.14em] text-[var(--lp-dim)]">
+              Votre organisation, vide et prête à recevoir vos données
+            </p>
           </div>
         </section>
       </main>

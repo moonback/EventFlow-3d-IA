@@ -59,6 +59,7 @@
   display: inline-flex;
   align-items: center;
   gap: 0.6rem;
+  white-space: nowrap;
   height: 3rem;
   padding: 0 1.4rem;
   border-radius: 999px;
@@ -201,12 +202,131 @@
   }
 }
 
+/* En-tête : dégradé sur l'ouverture, opaque une fois la page défilée */
+.lp-header {
+  background: linear-gradient(to bottom, rgb(14 11 26 / 0.9), rgb(14 11 26 / 0.55) 60%, transparent);
+  backdrop-filter: blur(2px);
+  transition: background-color 300ms ease, backdrop-filter 300ms ease;
+}
+.lp-header[data-scrolled="true"] {
+  background: rgb(14 11 26 / 0.82);
+  backdrop-filter: blur(14px) saturate(140%);
+}
+.lp-header:not([data-scrolled="true"]) > span {
+  opacity: 0;
+}
+.lp-fader {
+  background: linear-gradient(to right, var(--lp-lavender), var(--lp-magenta), var(--lp-amber));
+  box-shadow: 0 0 10px var(--lp-amber);
+}
+.lp-menu > summary::-webkit-details-marker,
+.lp-faq > summary::-webkit-details-marker {
+  display: none;
+}
+.lp summary:focus-visible {
+  outline: 2px solid var(--lp-amber);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+/* Bouton principal : reflet de projecteur au survol */
+.lp-btn-primary {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.lp-btn-primary::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(110deg, transparent 30%, rgb(255 255 255 / 0.55) 50%, transparent 70%);
+  transform: translateX(-120%);
+  transition: transform 700ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.lp-btn-primary:hover::after {
+  transform: translateX(120%);
+}
+.lp-btn-xl {
+  height: 3.5rem;
+  padding: 0 1.9rem;
+  font-size: 1.02rem;
+}
+
+/* Bandeau LED */
+.lp-ticker-track {
+  animation: lp-ticker 38s linear infinite;
+}
+.lp-ticker-track:hover {
+  animation-play-state: paused;
+}
+@keyframes lp-ticker {
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+/* Avant / après : le vieux réflexe est barré quand la ligne entre à l'écran */
+/* Le trait est un fond en ligne : il traverse chaque ligne quand le texte passe à la ligne */
+.lp-strike {
+  background: linear-gradient(var(--lp-magenta), var(--lp-magenta)) no-repeat 0 58% / 0% 1.5px;
+  transition: background-size 900ms cubic-bezier(0.6, 0, 0.2, 1);
+  transition-delay: calc(var(--i, 0) * 90ms + 450ms);
+}
+.lp-after {
+  transition: background-color 600ms ease;
+  transition-delay: calc(var(--i, 0) * 90ms + 900ms);
+}
+.lp-swap.is-in .lp-strike {
+  background-size: 100% 1.5px;
+}
+.lp-swap.is-in .lp-after {
+  background-color: rgb(255 179 71 / 0.06);
+}
+@media (scripting: none) {
+  .lp-strike {
+    background-size: 100% 1.5px;
+  }
+}
+
+/* Poursuite : un halo suit le pointeur sur les panneaux */
+.lp-spot {
+  position: relative;
+  isolation: isolate;
+}
+.lp-spot::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(420px circle at var(--mx, 50%) var(--my, -200px), rgb(255 179 71 / 0.1), rgb(156 140 255 / 0.05) 40%, transparent 70%);
+  opacity: 0;
+  transition: opacity 400ms ease;
+}
+.lp-spot:hover::before {
+  opacity: 1;
+}
+
+/* FAQ : la réponse glisse à l'ouverture */
+.lp-faq[open] > p {
+  animation: lp-fade 500ms ease both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .lp-rise,
   .lp-fade,
   .lp-lit,
-  .lp-fallback-beam {
+  .lp-fallback-beam,
+  .lp-ticker-track,
+  .lp-faq[open] > p {
     animation: none;
+  }
+  .lp-strike,
+  .lp-after,
+  .lp-btn-primary::after {
+    transition: none;
   }
   .lp-lit {
     background-position: 0 0;
