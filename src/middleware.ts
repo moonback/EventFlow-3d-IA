@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC_PATHS = ["/login", "/forgot-password", "/reset-password", "/accept-invitation", "/portal", "/demande/"];
+const PUBLIC_PATHS = ["/login", "/register", "/forgot-password", "/reset-password", "/accept-invitation", "/portal", "/demande/"];
 
 /**
  * Filtrage rapide : sans cookie de session, les pages privées redirigent vers /login.

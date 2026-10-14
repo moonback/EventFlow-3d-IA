@@ -133,6 +133,74 @@ export async function switchOrganization(ctx: AuthContext, organizationId: strin
   await db.session.update({ where: { id: ctx.sessionId }, data: { organizationId } });
 }
 
+// ─── Inscription (création d'un compte + organisation) ─────────────────────
+
+/** Transforme un libellé en identifiant d'URL (slug) : minuscules, tirets, ASCII. */
+function slugify(value: string): string {
+  const base = value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+  return base || "organisation";
+}
+
+/** Génère un slug unique en suffixant un compteur en cas de collision. */
+async function uniqueOrganizationSlug(name: string): Promise<string> {
+  const base = slugify(name);
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const candidate = attempt === 0 ? base : `${base}-${attempt + 1}`;
+    const existing = await db.organization.findUnique({ where: { slug: candidate }, select: { id: true } });
+    if (!existing) return candidate;
+  }
+  // Repli improbable : suffixe aléatoire
+  return `${base}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/**
+ * Inscription publique : crée l'utilisateur, sa nouvelle organisation et l'appartenance
+ * avec le rôle choisi. Le fondateur d'une organisation reçoit au minimum le rôle OWNER
+ * si aucun rôle n'est fourni. L'e-mail doit être unique sur la plateforme.
+ */
+export async function registerUser(input: {
+  name: string;
+  email: string;
+  organizationName: string;
+  role: Role;
+  password: string;
+}) {
+  const existing = await db.user.findUnique({ where: { email: input.email }, select: { id: true } });
+  if (existing) {
+    throw new ValidationError("Un compte existe déjà avec cet e-mail", { email: ["E-mail déjà utilisé"] });
+  }
+  const passwordHash = await hashPassword(input.password);
+  const slug = await uniqueOrganizationSlug(input.organizationName);
+  return db.$transaction(async (tx) => {
+    const user = await tx.user.create({
+      data: { email: input.email, name: input.name, passwordHash },
+      select: { id: true },
+    });
+    const organization = await tx.organization.create({
+      data: { name: input.organizationName, slug },
+      select: { id: true },
+    });
+    await tx.membership.create({ data: { organizationId: organization.id, userId: user.id, role: input.role } });
+    await tx.auditLog.create({
+      data: {
+        organizationId: organization.id,
+        actorId: user.id,
+        action: "auth.register",
+        entityType: "User",
+        entityId: user.id,
+        changes: { role: input.role },
+      },
+    });
+    return { userId: user.id, organizationId: organization.id };
+  });
+}
+
 // ─── Membres & invitations ───────────────────────────────────────────────
 
 export async function listMembers(ctx: AuthContext) {

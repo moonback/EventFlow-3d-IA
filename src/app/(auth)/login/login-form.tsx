@@ -44,9 +44,14 @@ export function LoginForm({ next }: { next: string }) {
       <Button type="submit" loading={form.formState.isSubmitting} className="w-full">
         Se connecter
       </Button>
-      <Link href="/forgot-password" className="text-center text-sm text-muted-foreground hover:text-foreground">
-        Mot de passe oublié ?
-      </Link>
+      <div className="flex flex-col gap-1 text-center text-sm text-muted-foreground">
+        <Link href="/forgot-password" className="hover:text-foreground">
+          Mot de passe oublié ?
+        </Link>
+        <Link href="/register" className="hover:text-foreground">
+          Pas encore de compte ? Créer un compte
+        </Link>
+      </div>
     </form>
   );
 }
