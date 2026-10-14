@@ -21,6 +21,7 @@ import type { PresenceUser } from "../objects/presence";
 import { LayoutHistory } from "./layout-history";
 import { decodeView, ViewBookmarks } from "./view-bookmarks";
 import { AnimationsMenu } from "./animations-menu";
+import { AssistantPanel } from "./assistant-panel";
 import { Plan2D } from "./plan-2d";
 import { LIGHTING_LABELS, QUALITY_LABELS, useLighting, useQuality, type Lighting, type Quality } from "./quality";
 import { ScenePanel } from "./scene-panel";
@@ -62,7 +63,7 @@ function nextCode(code: string, used: Set<string>) {
   return `${code}-${Date.now() % 10000}`;
 }
 
-export function WorldShell({ canEditLayout, canCount, canDuplicate, locations }: { canEditLayout: boolean; canCount: boolean; canDuplicate: boolean; locations: { value: string; label: string }[] }) {
+export function WorldShell({ canEditLayout, canCount, canDuplicate, assistant = false, locations }: { canEditLayout: boolean; canCount: boolean; canDuplicate: boolean; assistant?: boolean; locations: { value: string; label: string }[] }) {
   const params = useSearchParams();
   const [data, setData] = useState<SceneData | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -745,6 +746,9 @@ export function WorldShell({ canEditLayout, canCount, canDuplicate, locations }:
               {editMode ? <span className="text-warning">Mode agencement : sélectionnez un objet puis faites-le glisser · R : tourner · Ctrl+Z : annuler</span> : null}
             </div>
           ) : null}
+
+          {/* Assistant vocal Eric (masqué pendant l'édition du plan du site) */}
+          {assistant && !siteEditor ? <AssistantPanel /> : null}
         </div>
 
         {selected ? (

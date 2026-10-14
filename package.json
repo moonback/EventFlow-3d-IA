@@ -26,7 +26,10 @@
     "stock:reconcile": "tsx --env-file-if-exists=.env --conditions=react-server scripts/reconcile-stock.ts",
     "postinstall": "prisma generate",
     "db:seed:reset": "SEED_RESET=true tsx --env-file-if-exists=.env --conditions=react-server prisma/seed.ts",
-    "models:build": "tsx scripts/build-models.ts"
+    "models:build": "tsx scripts/build-models.ts",
+    "assistant:gateway": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local --conditions=react-server scripts/assistant-gateway.ts",
+    "assistant:dev": "tsx watch --env-file-if-exists=.env --env-file-if-exists=.env.local --conditions=react-server scripts/assistant-gateway.ts",
+    "assistant:check": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local --conditions=react-server scripts/check-live-model.ts"
   },
   "prisma": {
     "seed": "tsx --env-file-if-exists=.env --conditions=react-server prisma/seed.ts"
@@ -37,6 +40,7 @@
     "@fontsource-variable/big-shoulders-stencil-display": "^5.3.0",
     "@fontsource-variable/inter": "^5.3.0",
     "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@google/genai": "^2.29.1",
     "@hookform/resolvers": "^5.9.1",
     "@node-rs/argon2": "^2.2.2",
     "@prisma/client": "^6.19.3",
@@ -76,6 +80,7 @@
     "sonner": "^2.0.8",
     "tailwind-merge": "^3.7.0",
     "three": "^0.180.0",
+    "ws": "^8.22.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {
@@ -92,6 +97,7 @@
     "@types/react": "19.2",
     "@types/react-dom": "19.2",
     "@types/three": "^0.180.0",
+    "@types/ws": "^8.18.2",
     "@vitejs/plugin-react": "^6.1.2",
     "eslint": "^9.39.5",
     "eslint-config-next": "^15.5.27",

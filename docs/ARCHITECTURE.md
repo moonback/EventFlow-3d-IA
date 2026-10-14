@@ -71,3 +71,22 @@ Tâche planifiée ── POST /api/jobs/alerts (CRON_SECRET) ──────�
 - Repli : le plan SVG `Plan2D` affiche les mêmes objets (accessible au clavier). Il est utilisé
   en mode « Plan », si WebGL est absent, si la scène lève une erreur (ErrorBoundary) ou si le
   contexte WebGL est perdu.
+
+## Assistant vocal Eric
+
+```
+Navigateur ── micro PCM 16 kHz ──> passerelle /ws/assistant (Node, `ws`) ──> Gemini Live (gemini-3.8-live)
+          <── voix PCM 24 kHz, transcriptions ──┘   cookie de session, AuthContext       identifiants serveur
+```
+
+- `scripts/assistant-gateway.ts` démarre `src/server/assistant/gateway.ts`, **processus séparé** de
+  Next.js : l'App Router ne gère pas l'upgrade WebSocket, et le code serveur (`server-only`) se
+  charge avec la condition `react-server`, comme les autres scripts.
+- L'upgrade exige une origine autorisée (`APP_URL`), une session valide (`resolveSessionToken`,
+  module sans dépendance à Next.js) et la permission `assistant:use`. La session est revalidée
+  pendant la conversation ; une seule conversation par utilisateur.
+- `src/server/assistant/live-session.ts` isole Gemini derrière l'interface `LiveConnector`
+  (faux connecteur dans les tests). Reprise de session sur `goAway` grâce à la dernière poignée.
+- Protocole (`src/features/assistant/protocol.ts`) : trames binaires = audio, trames texte = JSON
+  validé par Zod. Côté client : `src/assistant/` (micro, lecteur, hook `useAssistant`) et le
+  panneau `src/three/ui/assistant-panel.tsx`.

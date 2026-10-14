@@ -1,0 +1,7 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "web", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev"], "port": 3000 },
+    { "name": "assistant-gateway", "runtimeExecutable": "npm", "runtimeArgs": ["run", "assistant:dev"], "port": 3001, "url": "http://localhost:3001" }
+  ]
+}

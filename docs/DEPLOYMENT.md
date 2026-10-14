@@ -26,6 +26,12 @@
 | `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_FORCE_PATH_STYLE` | si S3 | bucket **privé** (pas d'accès public : les fichiers sont servis par l'application après contrôle des droits) |
 | `UPLOAD_MAX_MB` | non | 15 par défaut |
 | `DEMO_PASSWORD`, `ALLOW_DEMO_SEED` | **non** | ne pas définir en production |
+| `ASSISTANT_ENABLED` | non | `true` pour activer l'assistant vocal Eric (`false` par défaut) |
+| `GEMINI_BACKEND` | si assistant | `enterprise` (Gemini Enterprise Agent Platform) — `developer` réservé aux essais |
+| `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION` | si assistant | projet Google Cloud ; région `eu` (résidence des données en Europe) |
+| `GEMINI_LIVE_MODEL`, `GEMINI_LIVE_VOICE` | non | `gemini-3.8-live` par défaut ; voix prédéfinie optionnelle |
+| `ASSISTANT_GATEWAY_PORT`, `ASSISTANT_MAX_SESSION_MINUTES`, `ASSISTANT_IDLE_SECONDS` | non | 3001, 30 min, 120 s par défaut |
+| `NEXT_PUBLIC_ASSISTANT_WS_URL` | **non** | développement uniquement ; en production la passerelle est servie sur la même origine |
 
 Les secrets sont fournis par le gestionnaire de secrets de l'hébergeur, jamais commités.
 
@@ -53,6 +59,35 @@ transmettre par un canal sûr. Les autres membres sont ensuite invités depuis
 
 Ne **jamais** exécuter `npm run db:seed` en production : il crée des données de démonstration
 (il refuse d'ailleurs de s'exécuter si `NODE_ENV=production`).
+
+## Assistant vocal Eric (optionnel)
+
+L'assistant passe par une **passerelle WebSocket** distincte de Next.js (`npm run assistant:gateway`,
+port `ASSISTANT_GATEWAY_PORT`), car l'App Router ne gère pas l'upgrade WebSocket. Elle partage la
+base et le code des services, authentifie l'utilisateur par le cookie de session et ouvre la session
+Gemini Live avec les identifiants Google Cloud du serveur (jamais transmis au navigateur).
+
+1. Google Cloud : API Vertex AI / Agent Platform activée, compte de service avec le seul rôle
+   « Vertex AI User » attaché à l'hôte (ou `GOOGLE_APPLICATION_CREDENTIALS` vers un fichier monté
+   hors du dépôt). Vérifier avec `npm run assistant:check` (un échange de quelques secondes).
+2. Lancer la passerelle comme un second service (même image, même variables d'environnement).
+3. Proxy inverse : router `/ws/assistant` vers la passerelle **sur la même origine** que
+   l'application, avec l'upgrade WebSocket et des délais longs, par exemple avec Nginx :
+
+   ```nginx
+   location /ws/assistant {
+     proxy_pass http://127.0.0.1:3001;
+     proxy_http_version 1.1;
+     proxy_set_header Upgrade $http_upgrade;
+     proxy_set_header Connection "upgrade";
+     proxy_set_header Host $host;
+     proxy_read_timeout 3600s;
+   }
+   ```
+4. Ne **pas** définir `NEXT_PUBLIC_ASSISTANT_WS_URL` au moment du build de production : la valeur
+   serait figée dans le code client et ajoutée à la CSP.
+5. Plusieurs instances de passerelle : une conversation reste attachée à sa connexion ; la limite
+   « une conversation par utilisateur » est appliquée par instance.
 
 ## Mises à jour
 
