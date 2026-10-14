@@ -13,7 +13,7 @@ export const GEL = {
   green: "#4ade80",
 } as const;
 
-export type BeamMode = "fan" | "sweep" | "cross" | "still" | "chase" | "ballyhoo";
+export type BeamMode = "fan" | "wave" | "sweep" | "cross" | "still" | "chase" | "ballyhoo";
 
 export interface LightCue {
   /** Couleur de chaque lyre (6 lyres, de cour à jardin) */
@@ -43,8 +43,8 @@ const g = GEL;
 /** Avant-show : le plateau au repos, affiché sur la page d'ouverture. */
 export const PRESHOW: LightCue = {
   colors: [g.amber, g.magenta, g.lavender, g.lavender, g.magenta, g.amber],
-  mode: "fan",
-  speed: 0.6,
+  mode: "wave",
+  speed: 0.8,
   intensity: 1,
   wall: [g.lavender, g.magenta],
 };
