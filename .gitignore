@@ -30,3 +30,5 @@ blob-report/
 *.log
 npm-debug.log*
 .superpowers/
+.vercel
+.env*
