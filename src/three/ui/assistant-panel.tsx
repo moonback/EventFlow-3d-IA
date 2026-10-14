@@ -3,7 +3,7 @@ import { AudioLines, Loader2, Mic, MicOff, PhoneOff, Send, X } from "lucide-reac
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useAssistant, type AssistantStatus } from "@/assistant/use-assistant";
+import type { AssistantStatus, useAssistant } from "@/assistant/use-assistant";
 import { cn } from "@/lib/utils";
 
 const STATUS_LABELS: Record<AssistantStatus, string> = {
@@ -25,13 +25,20 @@ function readConsent() {
 }
 
 /** Panneau de conversation avec Eric (coin inférieur droit de la scène). */
-export function AssistantPanel() {
-  const a = useAssistant();
-  const [open, setOpen] = useState(false);
+export function AssistantPanel({ assistant: a, open, onOpenChange: setOpen }: { assistant: ReturnType<typeof useAssistant>; open: boolean; onOpenChange: (open: boolean) => void }) {
   const [draft, setDraft] = useState("");
   const [consent, setConsent] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
   useEffect(() => setConsent(readConsent()), []);
+  // Niveau du micro lu à ~15 images/s, localement : seul le panneau se redessine
+  const [micLevel, setMicLevel] = useState(0);
+  const micOn = a.micOn;
+  const readLevel = a.micLevel;
+  useEffect(() => {
+    if (!micOn) return setMicLevel(0);
+    const t = setInterval(() => setMicLevel(Math.round(readLevel() * 20) / 20), 66);
+    return () => clearInterval(t);
+  }, [micOn, readLevel]);
   useEffect(() => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
   }, [a.lines]);
@@ -118,7 +125,7 @@ export function AssistantPanel() {
               {a.micOn ? <Mic /> : <MicOff />} {a.micOn ? "Micro actif" : "Micro coupé"}
             </Button>
             <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted" aria-hidden>
-              <span className="block h-full bg-info transition-[width] duration-75" style={{ width: `${a.micOn ? a.micLevel * 100 : 0}%` }} />
+              <span className="block h-full bg-info transition-[width] duration-75" style={{ width: `${micLevel * 100}%` }} />
             </span>
             <Button size="icon-sm" variant="destructive" onClick={a.stop} aria-label="Raccrocher">
               <PhoneOff />

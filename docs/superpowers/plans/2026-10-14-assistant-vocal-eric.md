@@ -255,6 +255,16 @@ Carte « Confirmer » ◄────────── action ────┘  
 - tests : `tests/unit/assistant-tools.test.ts`, `tests/integration/assistant-tools.test.ts` (chaque outil exécuté sur la vraie base, droits, retrait de permission par organisation, isolation), routage d'outils dans `assistant-gateway.test.ts` ;
 - vérifié avec le vrai Gemini sur la base de démo : événements de la quinzaine, jour et heure de Nova X, stock et emplacements des lyres, personnel et véhicules du mariage Fournier — toutes les réponses contrôlées contre la base ; marge refusée au responsable logistique (`FORBIDDEN`).
 
+**Étape C « Eric montre » — livrée** :
+- 9 outils « monde 3D » (`show_object`, `go_to_zone`, `highlight`, `locate_equipment`, `set_view`, `show_timeline`, `start_meeting`, `simulate_loading`, `get_scene`) déclarés à Gemini avec les 23 outils « données » ; aller-retour `world_call` / `world_result` validé des deux côtés, délai de 5 s, codes d'erreur du navigateur restreints aux codes connus ;
+- pont de scène `src/three/ui/world-bridge.ts` (dépendances injectées, testé sans WebGL) ; résolution des cibles par clé, identifiant métier ou nom (sans accents ni casse, ambiguïtés signalées avec suggestions) ;
+- avatar procédural `src/three/objects/eric.tsx` (pas de GLB humain disponible dans le dépôt) : marche, désignation, lip-sync par amplitude, anneau d'état, étiquette ; poste de départ dans la salle de contrôle ; placé à droite de l'objet montré, dans l'axe du cadrage caméra ;
+- persona : montrer ce dont il parle, ne jamais prétendre avoir montré un objet en cas d'échec, actions de scène lourdes seulement sur demande ;
+- tests : `tests/unit/assistant-world.test.ts` (résolution, déclarations, pont), commandes de scène dans `assistant-gateway.test.ts` ;
+- vérifié avec le vrai Gemini : « Montre-moi le Renault Master » (`search` → `list_vehicles` → `show_object`, caméra et fiche sur GA-125-EV), « Montre-moi l'emplacement A-03 » (Eric à côté du rayonnage, contenu exact), anneau vert pendant la parole.
+- constat : sur ce poste (GPU Intel HD 530, navigateur intégré), la scène perd parfois son contexte WebGL après la réduction automatique de qualité — reproduit **à l'identique sans Eric** (test A/B), donc préexistant ; en développement, chaque rechargement à chaud recrée aussi le canvas.
+- non fait : pastille d'Eric dans le plan 2D (mode « Plan ») ; modèle GLB réaliste avec visèmes.
+
 Reste à vérifier : conversation **au micro** sur un vrai navigateur (le navigateur de prévisualisation bloque le micro ; testé au clavier, voix et interruption comprises) ; mode `enterprise` avec un vrai projet Google Cloud ; choix d'une voix masculine française (`GEMINI_LIVE_VOICE`).
 
 ## Ordre de livraison conseillé

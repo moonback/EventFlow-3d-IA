@@ -97,6 +97,20 @@ Navigateur ── micro PCM 16 kHz ──> passerelle /ws/assistant (Node, `ws`)
   erreurs deviennent des codes explicites pour le modèle (`FORBIDDEN`, `NOT_FOUND`,
   `INVALID_ARGUMENTS`, `TIMEOUT`…). Chaque appel est journalisé dans `AssistantToolCall`
   (outil, succès, durée : ni arguments ni contenu).
+- **Outils « monde 3D »** (`src/features/assistant/world-tools.ts`, partagé client/serveur) :
+  montrer un objet, aller à une zone, mettre en évidence, localiser un matériel, changer de vue
+  ou de calque, frise, réunion, simulation de chargement, décrire la scène. La passerelle valide
+  les arguments puis envoie un `world_call` au navigateur et attend son `world_result` (5 s) ;
+  `src/three/ui/world-bridge.ts` les exécute sur l'état de `WorldShell` (aucune écriture en base),
+  avec une résolution tolérante des cibles (`scene-targets.ts` : clé, identifiant, nom). Chaque
+  commande renvoie un résultat factuel ; la caméra reste à l'utilisateur pendant la visite à pied
+  et l'agencement. Seuls des codes d'erreur connus sont acceptés du navigateur.
+- **Avatar** (`src/three/objects/eric.tsx`) : régisseur stylisé en primitives (casque-micro),
+  marche vers l'objet montré et le désigne, bouche synchronisée sur l'amplitude de sa voix,
+  anneau d'état (gris au repos, bleu à l'écoute, ambre pendant une consultation, vert quand il
+  parle) ; ne force le rendu (`invalidate`) que lorsqu'il bouge ou converse. Cliquer sur lui
+  ouvre la conversation. Le hook `useAssistant` vit dans `WorldShell` ; le niveau du micro est
+  lu par le panneau seul, pour ne pas re-rendre la scène.
 - Protocole (`src/features/assistant/protocol.ts`) : trames binaires = audio, trames texte = JSON
   validé par Zod. Côté client : `src/assistant/` (micro, lecteur, hook `useAssistant`) et le
   panneau `src/three/ui/assistant-panel.tsx`.

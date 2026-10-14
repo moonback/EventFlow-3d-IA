@@ -347,3 +347,78 @@ describe("outils", () => {
     await c.closed;
   });
 });
+
+describe("commandes de scène", () => {
+  it("déclare aussi les outils « monde 3D »", async () => {
+    const before = sessions.length;
+    const c = await connect(port, { cookie });
+    await c.waitFor(isReady);
+    expect(sessions[before]!.options.tools.map((t) => t.name)).toEqual(expect.arrayContaining(["show_object", "go_to_zone", "highlight", "get_scene"]));
+    c.ws.close();
+    await c.closed;
+  });
+
+  it("fait exécuter la commande par le navigateur et renvoie son résultat à Gemini", async () => {
+    const before = sessions.length;
+    const c = await connect(port, { cookie });
+    await c.waitFor(isReady);
+    const live = sessions[before]!;
+    live.emit({ toolCall: { functionCalls: [{ id: "w1", name: "show_object", args: { target: "  Renault Master " } }] } });
+    const call = await c.waitFor((m) => m.type === "world_call");
+    // Arguments validés (et normalisés) par la passerelle avant d'atteindre le navigateur
+    expect(call).toEqual({ type: "world_call", id: "w1", name: "show_object", args: { target: "Renault Master" } });
+    c.ws.send(JSON.stringify({ type: "world_result", id: "w1", result: { ok: true, shown: { key: "VEHICLE:v1", label: "Renault Master" } } }));
+    await until(() => live.toolResponses.length === 1);
+    expect(live.toolResponses[0]).toEqual([{ id: "w1", name: "show_object", response: { output: { ok: true, shown: { key: "VEHICLE:v1", label: "Renault Master" } } } }]);
+    // Pas d'indicateur « Eric consulte … » pour une commande de scène
+    expect(c.messages.some((m) => m.type === "tool" && m.id === "w1")).toBe(false);
+    c.ws.close();
+    await c.closed;
+  });
+
+  it("rejette des arguments invalides sans solliciter le navigateur", async () => {
+    const before = sessions.length;
+    const c = await connect(port, { cookie });
+    await c.waitFor(isReady);
+    const live = sessions[before]!;
+    live.emit({ toolCall: { functionCalls: [{ id: "w2", name: "go_to_zone", args: { zone: "PARKING" } }] } });
+    await until(() => live.toolResponses.length === 1);
+    expect(live.toolResponses[0]![0]!.response).toMatchObject({ error: "INVALID_ARGUMENTS" });
+    expect(c.messages.some((m) => m.type === "world_call")).toBe(false);
+    c.ws.close();
+    await c.closed;
+  });
+
+  it("transmet l'échec du navigateur avec ses suggestions, sans laisser passer un code arbitraire", async () => {
+    const before = sessions.length;
+    const c = await connect(port, { cookie });
+    await c.waitFor(isReady);
+    const live = sessions[before]!;
+    live.emit({ toolCall: { functionCalls: [{ id: "w3", name: "show_object", args: { target: "rayonnage" } }] } });
+    await c.waitFor((m) => m.type === "world_call");
+    c.ws.send(JSON.stringify({ type: "world_result", id: "w3", result: { ok: false, error: "AMBIGUOUS", message: "Plusieurs objets correspondent", suggestions: ["A-03", "A-01", 42] } }));
+    await until(() => live.toolResponses.length === 1);
+    expect(live.toolResponses[0]![0]!.response).toEqual({ error: "AMBIGUOUS", message: "Plusieurs objets correspondent Suggestions : A-03 ; A-01" });
+    // Code inventé par le navigateur : ramené à FAILED
+    live.emit({ toolCall: { functionCalls: [{ id: "w5", name: "get_scene", args: {} }] } });
+    await c.waitFor((m) => m.type === "world_call" && m.id === "w5");
+    c.ws.send(JSON.stringify({ type: "world_result", id: "w5", result: { ok: false, error: "ACCESS_GRANTED", message: "x" } }));
+    await until(() => live.toolResponses.length === 2);
+    expect(live.toolResponses[1]![0]!.response).toEqual({ error: "FAILED", message: "x" });
+    c.ws.close();
+    await c.closed;
+  });
+
+  it("répond UNAVAILABLE si le navigateur ne répond pas à temps", async () => {
+    const g = await gateway({ worldTimeoutMs: 100 });
+    const before = sessions.length;
+    const c = await connect(g.port, { cookie });
+    await c.waitFor(isReady);
+    const live = sessions[before]!;
+    live.emit({ toolCall: { functionCalls: [{ id: "w4", name: "get_scene", args: {} }] } });
+    await until(() => live.toolResponses.length === 1);
+    expect(live.toolResponses[0]![0]!.response).toEqual({ error: "UNAVAILABLE", message: "La scène 3D n'a pas répondu" });
+    c.ws.close();
+    await c.closed;
+  });
+});

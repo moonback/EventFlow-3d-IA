@@ -4,6 +4,7 @@ import type { Duplex } from "node:stream";
 import type { FunctionCall, FunctionDeclaration, LiveServerMessage } from "@google/genai";
 import { WebSocketServer, type RawData, type WebSocket } from "ws";
 import { buildSystemInstruction } from "@/features/assistant/persona";
+import { findWorldTool, isWorldErrorCode, worldToolDeclarations, type WorldResult } from "@/features/assistant/world-tools";
 import { ASSISTANT_WS_PATH, CLOSE_CODES, MAX_AUDIO_FRAME_BYTES, parseClientMessage, type AssistantErrorCode, type ServerMessage } from "@/features/assistant/protocol";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
@@ -29,6 +30,8 @@ export interface GatewayOptions {
   tools?: FunctionDeclaration[];
   runTool?: (ctx: AuthContext, name: string, args: unknown) => Promise<ToolOutcome>;
   toolTimeoutMs?: number;
+  /** Délai de réponse du navigateur à une commande de scène */
+  worldTimeoutMs?: number;
   log?: (event: string, data?: Record<string, unknown>) => void;
 }
 
@@ -64,9 +67,10 @@ export async function startAssistantGateway(options: GatewayOptions): Promise<As
     maxDurationMs: options.maxDurationMs ?? e.ASSISTANT_MAX_SESSION_MINUTES * 60_000,
     revalidateMs: options.revalidateMs ?? 60_000,
     resolveSession: options.resolveSession ?? resolveSessionToken,
-    tools: options.tools ?? dataToolDeclarations(),
+    tools: options.tools ?? [...dataToolDeclarations(), ...worldToolDeclarations()],
     runTool: options.runTool ?? runDataTool,
     toolTimeoutMs: options.toolTimeoutMs ?? 10_000,
+    worldTimeoutMs: options.worldTimeoutMs ?? 5_000,
     log: options.log ?? ((event: string, data?: Record<string, unknown>) => console.info(`[assistant] ${event}`, data ?? {})),
     connector: options.connector,
   };
@@ -133,6 +137,7 @@ type ResolvedOptions = {
   tools: FunctionDeclaration[];
   runTool: (ctx: AuthContext, name: string, args: unknown) => Promise<ToolOutcome>;
   toolTimeoutMs: number;
+  worldTimeoutMs: number;
   log: (event: string, data?: Record<string, unknown>) => void;
   connector: LiveConnector;
 };
@@ -150,6 +155,8 @@ class AssistantConnection {
   private readonly pendingTexts: string[] = [];
   /** Appels d'outils annulés par le modèle (l'utilisateur a repris la parole) */
   private readonly cancelledCalls = new Set<string>();
+  /** Commandes de scène en attente de `world_result` */
+  private readonly pendingWorld = new Map<string, (result: WorldResult) => void>();
   private readonly timers: NodeJS.Timeout[] = [];
 
   constructor(
@@ -286,11 +293,14 @@ class AssistantConnection {
   private async runToolCall(call: FunctionCall, allowed: boolean): Promise<ToolResponse> {
     const id = call.id ?? "";
     const name = call.name ?? "";
+    const world = findWorldTool(name);
     const label = findDataTool(name)?.label ?? name;
     const started = Date.now();
-    this.send({ type: "tool", id, label, state: "running" });
+    // Les commandes de scène se voient dans la 3D : pas d'indicateur « Eric consulte … »
+    if (!world) this.send({ type: "tool", id, label, state: "running" });
     let outcome: ToolOutcome;
     if (!allowed) outcome = { ok: false, error: "TOO_MANY_CALLS", message: `${MAX_PARALLEL_TOOLS} consultations au plus à la fois` };
+    else if (world) outcome = await this.runWorldTool(id, name, call.args ?? {});
     else {
       let timer: NodeJS.Timeout | undefined;
       const timeout = new Promise<ToolOutcome>((resolve) => {
@@ -299,12 +309,34 @@ class AssistantConnection {
       outcome = await Promise.race([this.opts.runTool(this.ctx, name, call.args ?? {}), timeout]).finally(() => clearTimeout(timer));
     }
     const durationMs = Date.now() - started;
-    this.send({ type: "tool", id, label, state: outcome.ok ? "done" : "error" });
+    if (!world) this.send({ type: "tool", id, label, state: outcome.ok ? "done" : "error" });
     this.opts.log("tool", { userId: this.ctx.userId, tool: name, ok: outcome.ok, error: outcome.ok ? undefined : outcome.error, durationMs });
     await db.assistantToolCall
       .create({ data: { organizationId: this.ctx.organizationId, userId: this.ctx.userId, tool: name.slice(0, 64), ok: outcome.ok, errorCode: outcome.ok ? null : outcome.error, durationMs } })
       .catch((error: unknown) => this.opts.log("tool_log_failed", { message: error instanceof Error ? error.message : String(error) }));
     return { id, name, response: outcome.ok ? { output: outcome.output } : { error: outcome.error, message: outcome.message } };
+  }
+
+  /** Commande de scène : arguments validés ici, exécution par le navigateur, résultat attendu 5 s au plus. */
+  private async runWorldTool(id: string, name: string, args: Record<string, unknown>): Promise<ToolOutcome> {
+    const parsed = findWorldTool(name)!.input.safeParse(args);
+    if (!parsed.success) return { ok: false, error: "INVALID_ARGUMENTS", message: parsed.error.issues.map((i) => `${i.path.join(".") || "arguments"} : ${i.message}`).join(" ; ") };
+    const callId = id || `w${Date.now()}`;
+    const result = await new Promise<WorldResult>((resolve) => {
+      const timer = setTimeout(() => {
+        this.pendingWorld.delete(callId);
+        resolve({ ok: false, error: "UNAVAILABLE", message: "La scène 3D n'a pas répondu" });
+      }, this.opts.worldTimeoutMs);
+      this.pendingWorld.set(callId, (r) => {
+        clearTimeout(timer);
+        this.pendingWorld.delete(callId);
+        resolve(r);
+      });
+      this.send({ type: "world_call", id: callId, name, args: parsed.data as Record<string, unknown> });
+    });
+    if (result.ok) return { ok: true, output: result };
+    const suggestions = result.suggestions?.length ? ` Suggestions : ${result.suggestions.join(" ; ")}` : "";
+    return { ok: false, error: result.error, message: `${result.message}${suggestions}` };
   }
 
   private onClientMessage(data: RawData, isBinary: boolean) {
@@ -330,6 +362,16 @@ class AssistantConnection {
       case "hangup":
         this.terminate(null, CLOSE_CODES.HANGUP, "Conversation terminée");
         break;
+      case "world_result": {
+        const r = message.result;
+        // Forme minimale contrôlée : le navigateur ne peut pas faire passer n'importe quoi pour un succès
+        const result: WorldResult =
+          r.ok === true
+            ? { ...r, ok: true }
+            : { ok: false, error: isWorldErrorCode(r.error) ? r.error : "FAILED", message: typeof r.message === "string" ? r.message : "Commande de scène impossible", suggestions: Array.isArray(r.suggestions) ? r.suggestions.filter((x): x is string => typeof x === "string").slice(0, 6) : undefined };
+        this.pendingWorld.get(message.id)?.(result);
+        break;
+      }
     }
   }
 
@@ -351,6 +393,7 @@ class AssistantConnection {
     this.closed = true;
     this.generation++;
     for (const t of this.timers) clearTimeout(t);
+    for (const resolve of [...this.pendingWorld.values()]) resolve({ ok: false, error: "UNAVAILABLE", message: "Conversation terminée" });
     this.live?.close();
     this.live = null;
     this.onEnd();

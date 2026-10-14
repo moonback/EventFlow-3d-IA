@@ -1,12 +1,16 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ASSISTANT_WS_PATH, CLOSE_CODES, type ClientMessage, type ServerMessage } from "@/features/assistant/protocol";
+import { ASSISTANT_WS_PATH, CLOSE_CODES, MAX_WORLD_RESULT_CHARS, type ClientMessage, type ServerMessage } from "@/features/assistant/protocol";
+import { findWorldTool, type WorldResult } from "@/features/assistant/world-tools";
 import { startMicrophone, type Microphone } from "./audio/microphone";
 import { VoicePlayer } from "./audio/player";
 
 const RECONNECTING = "Connexion perdue, reconnexion…";
 
 export type AssistantStatus = "idle" | "connecting" | "listening" | "speaking" | "error";
+
+/** Exécute une commande de scène demandée par Eric (implémenté par le monde 3D). */
+export type WorldBridge = (name: string, args: Record<string, unknown>) => Promise<WorldResult>;
 
 export interface TranscriptLine {
   id: number;
@@ -35,12 +39,11 @@ const CLOSE_MESSAGES: Record<number, string> = {
  * Conversation vocale avec Eric : WebSocket vers la passerelle, micro (PCM 16 kHz), lecture de la
  * voix (PCM 24 kHz), transcription en direct et saisie au clavier dans la même conversation.
  */
-export function useAssistant() {
+export function useAssistant(bridge?: WorldBridge) {
   const [status, setStatus] = useState<AssistantStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [lines, setLines] = useState<TranscriptLine[]>([]);
   const [micOn, setMicOn] = useState(false);
-  const [micLevel, setMicLevel] = useState(0);
   /** Données consultées en ce moment (« le stock », « les événements »…) */
   const [activity, setActivity] = useState<string | null>(null);
 
@@ -57,6 +60,8 @@ export function useAssistant() {
   const retries = useRef(0);
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startRef = useRef<() => Promise<void>>(async () => undefined);
+  const bridgeRef = useRef(bridge);
+  bridgeRef.current = bridge;
 
   const send = useCallback((message: ClientMessage) => {
     if (socket.current?.readyState === WebSocket.OPEN) socket.current.send(JSON.stringify(message));
@@ -106,6 +111,21 @@ export function useAssistant() {
     });
   }, []);
 
+  /** Exécute une commande de scène ; ne lève jamais (le résultat repart toujours vers Eric). */
+  const runWorldCall = useCallback(async (name: string, args: Record<string, unknown>): Promise<WorldResult> => {
+    const tool = findWorldTool(name);
+    if (!tool) return { ok: false, error: "UNKNOWN_TOOL", message: `Commande inconnue : ${name}` };
+    const parsed = tool.input.safeParse(args);
+    if (!parsed.success) return { ok: false, error: "INVALID_ARGUMENTS", message: parsed.error.issues.map((i) => i.message).join(" ; ") };
+    if (!bridgeRef.current) return { ok: false, error: "UNAVAILABLE", message: "Le monde 3D n'est pas affiché" };
+    try {
+      const result = await bridgeRef.current(name, parsed.data as Record<string, unknown>);
+      return JSON.stringify(result).length <= MAX_WORLD_RESULT_CHARS ? result : { ok: result.ok, ...(result.ok ? {} : { error: result.error, message: result.message }) } as WorldResult;
+    } catch (e) {
+      return { ok: false, error: "FAILED", message: e instanceof Error ? e.message : "Commande de scène impossible" };
+    }
+  }, []);
+
   const onServerMessage = useCallback(
     (message: ServerMessage) => {
       switch (message.type) {
@@ -134,13 +154,16 @@ export function useAssistant() {
           else runningTools.current.delete(message.id);
           setActivity([...runningTools.current.values()].at(-1) ?? null);
           break;
+        case "world_call":
+          void runWorldCall(message.name, message.args).then((result) => send({ type: "world_result", id: message.id, result }));
+          break;
         case "error":
           lastError.current = message.message;
           setError(message.message);
           break;
       }
     },
-    [appendTranscript, startMic],
+    [appendTranscript, runWorldCall, send, startMic],
   );
 
   const start = useCallback(async () => {
@@ -222,16 +245,17 @@ export function useAssistant() {
 
   /** Amplitude de la voix d'Eric (0..1), lue à chaque image par l'avatar. */
   const voiceLevel = useCallback(() => player.current?.level() ?? 0, []);
+  /** Niveau du micro (0..1) : lu par le panneau à son rythme, sans faire re-rendre la scène. */
+  const micLevel = useCallback(() => (mic.current ? Math.min(1, micLevelRef.current * 4) : 0), []);
 
-  // Boucle d'affichage : Eric parle-t-il ? niveau du micro (≈ 15 rafraîchissements par seconde)
+  // Eric parle-t-il ? (React ignore la mise à jour quand l'état ne change pas)
   const active = status === "listening" || status === "speaking";
   useEffect(() => {
     if (!active) return;
     const t = setInterval(() => {
       // Mise à jour fonctionnelle : ne remplace pas un état « connecting » arrivé entre-temps
       setStatus((s) => (s === "listening" || s === "speaking" ? (player.current?.speaking ? "speaking" : "listening") : s));
-      setMicLevel(Math.round(Math.min(1, micLevelRef.current * 4) * 20) / 20);
-    }, 66);
+    }, 100);
     return () => clearInterval(t);
   }, [active]);
 

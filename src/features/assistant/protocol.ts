@@ -14,6 +14,8 @@ export const SPEAKER_SAMPLE_RATE = 24_000;
 export const MAX_AUDIO_FRAME_BYTES = 32_000;
 /** Taille maximale d'un message texte saisi */
 export const MAX_TEXT_LENGTH = 2_000;
+/** Taille maximale du résultat d'une commande de scène renvoyé par le navigateur (JSON) */
+export const MAX_WORLD_RESULT_CHARS = 8_000;
 
 export const clientMessageSchema = z.discriminatedUnion("type", [
   /** Message saisi au clavier (même conversation que la voix) */
@@ -22,6 +24,12 @@ export const clientMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("audio_end") }),
   /** Fin de la conversation demandée par l'utilisateur */
   z.object({ type: z.literal("hangup") }),
+  /** Résultat d'une commande de scène (`world_call`) exécutée par le navigateur */
+  z.object({
+    type: z.literal("world_result"),
+    id: z.string().min(1).max(100),
+    result: z.record(z.string(), z.unknown()).refine((r) => JSON.stringify(r).length <= MAX_WORLD_RESULT_CHARS, "Résultat trop volumineux"),
+  }),
 ]);
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
 
@@ -37,6 +45,8 @@ export type ServerMessage =
   | { type: "turn_complete" }
   /** Eric consulte des données (outil en cours, terminé ou en échec) */
   | { type: "tool"; id: string; label: string; state: "running" | "done" | "error" }
+  /** Commande de scène à exécuter par le navigateur, qui répond par `world_result` */
+  | { type: "world_call"; id: string; name: string; args: Record<string, unknown> }
   | { type: "error"; code: AssistantErrorCode; message: string };
 
 export type AssistantErrorCode = "LIVE_UNAVAILABLE" | "BAD_MESSAGE" | "SESSION_EXPIRED" | "IDLE_TIMEOUT" | "MAX_DURATION" | "REPLACED";
