@@ -5,15 +5,8 @@ import * as THREE from "three";
 import type { AssistantStatus } from "@/assistant/use-assistant";
 import { glow, RING, standard } from "../materials/palette";
 import type { EricSpot } from "../ui/world-bridge";
+import { ERIC_MOOD_COLORS as MOOD_COLORS, ERIC_MOOD_LABELS, ericMood } from "./eric-mood";
 import { Label } from "./label";
-
-/** Couleur de l'anneau au sol selon l'état de la conversation */
-const MOOD_COLORS: Record<"idle" | "listening" | "thinking" | "speaking", string> = {
-  idle: "#64748b",
-  listening: "#38bdf8",
-  thinking: "#f59e0b",
-  speaking: "#22c55e",
-};
 
 const SKIN = standard("#e0b48f", { roughness: 0.8 });
 const JACKET = standard("#1e293b", { roughness: 0.6 });
@@ -80,7 +73,7 @@ export function Eric({ spot, status, thinking, level, onClick }: EricProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const initialPosition = useMemo<[number, number, number]>(() => [spot.position[0], 0, spot.position[1]], []);
 
-  const mood = thinking ? "thinking" : status === "speaking" ? "speaking" : status === "listening" ? "listening" : "idle";
+  const mood = ericMood(status, thinking);
   const active = status !== "idle" && status !== "error";
 
   // Nouvelle destination : le geste de désignation est rejoué à l'arrivée
@@ -204,7 +197,7 @@ export function Eric({ spot, status, thinking, level, onClick }: EricProps) {
           <mesh geometry={BOOM} material={HEADSET} position={[0.17, -0.09, 0.11]} rotation={[0.9, 0, 0.5]} />
         </group>
       </group>
-      <Label text="Eric" sub={mood === "thinking" ? "consulte…" : mood === "speaking" ? "parle" : mood === "listening" ? "à l'écoute" : "régisseur virtuel"} position={[0, 2.45, 0]} height={0.32} accent={MOOD_COLORS[mood]} maxDistance={60} />
+      <Label text="Eric" sub={ERIC_MOOD_LABELS[mood]} position={[0, 2.45, 0]} height={0.32} accent={MOOD_COLORS[mood]} maxDistance={60} />
     </group>
   );
 }
