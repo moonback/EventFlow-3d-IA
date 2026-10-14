@@ -4,6 +4,8 @@ import { ASSISTANT_WS_PATH, CLOSE_CODES, type ClientMessage, type ServerMessage 
 import { startMicrophone, type Microphone } from "./audio/microphone";
 import { VoicePlayer } from "./audio/player";
 
+const RECONNECTING = "Connexion perdue, reconnexion…";
+
 export type AssistantStatus = "idle" | "connecting" | "listening" | "speaking" | "error";
 
 export interface TranscriptLine {
@@ -20,6 +22,10 @@ export function assistantSocketUrl() {
   return `${protocol}//${window.location.host}${ASSISTANT_WS_PATH}`;
 }
 
+/** Fermetures dues au réseau ou à un redémarrage de la passerelle : reconnexion automatique */
+const RETRYABLE_CLOSES = new Set([1001, 1006, 1011, 1012]);
+const MAX_RETRIES = 3;
+
 const CLOSE_MESSAGES: Record<number, string> = {
   1006: "La connexion avec Eric a été coupée",
   [CLOSE_CODES.REPLACED]: "La conversation a été ouverte dans un autre onglet",
@@ -35,6 +41,8 @@ export function useAssistant() {
   const [lines, setLines] = useState<TranscriptLine[]>([]);
   const [micOn, setMicOn] = useState(false);
   const [micLevel, setMicLevel] = useState(0);
+  /** Données consultées en ce moment (« le stock », « les événements »…) */
+  const [activity, setActivity] = useState<string | null>(null);
 
   const socket = useRef<WebSocket | null>(null);
   const player = useRef<VoicePlayer | null>(null);
@@ -45,6 +53,10 @@ export function useAssistant() {
   /** Locuteur du tour en cours : un nouveau fragment du même locuteur complète sa ligne */
   const openRole = useRef<"user" | "eric" | null>(null);
   const lineId = useRef(0);
+  const runningTools = useRef(new Map<string, string>());
+  const retries = useRef(0);
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const startRef = useRef<() => Promise<void>>(async () => undefined);
 
   const send = useCallback((message: ClientMessage) => {
     if (socket.current?.readyState === WebSocket.OPEN) socket.current.send(JSON.stringify(message));
@@ -76,6 +88,8 @@ export function useAssistant() {
     player.current = null;
     ready.current = false;
     openRole.current = null;
+    runningTools.current.clear();
+    setActivity(null);
     const ws = socket.current;
     socket.current = null;
     if (ws && ws.readyState <= WebSocket.OPEN) ws.close(1000);
@@ -98,6 +112,9 @@ export function useAssistant() {
         case "state":
           ready.current = message.state === "ready";
           if (message.state === "ready") {
+            retries.current = 0;
+            lastError.current = null;
+            setError((e) => (e === RECONNECTING ? null : e));
             setStatus("listening");
             void startMic();
           } else setStatus("connecting");
@@ -111,6 +128,11 @@ export function useAssistant() {
           break;
         case "turn_complete":
           openRole.current = null;
+          break;
+        case "tool":
+          if (message.state === "running") runningTools.current.set(message.id, message.label);
+          else runningTools.current.delete(message.id);
+          setActivity([...runningTools.current.values()].at(-1) ?? null);
           break;
         case "error":
           lastError.current = message.message;
@@ -150,7 +172,13 @@ export function useAssistant() {
       if (socket.current !== ws) return; // conversation déjà terminée côté client
       teardown();
       if (e.code === 1000 || e.code === CLOSE_CODES.HANGUP) setStatus("idle");
-      else {
+      else if (opened && RETRYABLE_CLOSES.has(e.code) && retries.current < MAX_RETRIES) {
+        // Coupure réseau : nouvelle conversation après 1 s, 2 s puis 4 s (la transcription est conservée)
+        const delay = 1000 * 2 ** retries.current++;
+        setStatus("connecting");
+        setError(RECONNECTING);
+        retryTimer.current = setTimeout(() => void startRef.current(), delay);
+      } else {
         setStatus("error");
         // Upgrade refusé (session, permission, assistant désactivé) ou passerelle arrêtée : jamais ouvert
         const fallback = opened ? CLOSE_MESSAGES[e.code] : "Impossible de joindre Eric : assistant désactivé, accès refusé ou passerelle arrêtée";
@@ -158,12 +186,20 @@ export function useAssistant() {
       }
     };
   }, [onServerMessage, teardown]);
+  startRef.current = start;
+
+  const clearRetry = useCallback(() => {
+    if (retryTimer.current) clearTimeout(retryTimer.current);
+    retryTimer.current = null;
+    retries.current = 0;
+  }, []);
 
   const stop = useCallback(() => {
+    clearRetry();
     send({ type: "hangup" });
     teardown();
     setStatus("idle");
-  }, [send, teardown]);
+  }, [clearRetry, send, teardown]);
 
   const toggleMic = useCallback(() => {
     if (mic.current) {
@@ -192,13 +228,20 @@ export function useAssistant() {
   useEffect(() => {
     if (!active) return;
     const t = setInterval(() => {
-      setStatus(player.current?.speaking ? "speaking" : "listening");
+      // Mise à jour fonctionnelle : ne remplace pas un état « connecting » arrivé entre-temps
+      setStatus((s) => (s === "listening" || s === "speaking" ? (player.current?.speaking ? "speaking" : "listening") : s));
       setMicLevel(Math.round(Math.min(1, micLevelRef.current * 4) * 20) / 20);
     }, 66);
     return () => clearInterval(t);
   }, [active]);
 
-  useEffect(() => teardown, [teardown]);
+  useEffect(
+    () => () => {
+      clearRetry();
+      teardown();
+    },
+    [clearRetry, teardown],
+  );
 
-  return { status, error, lines, micOn, micLevel, start, stop, toggleMic, sendText, voiceLevel };
+  return { status, error, lines, micOn, micLevel, activity, start, stop, toggleMic, sendText, voiceLevel };
 }

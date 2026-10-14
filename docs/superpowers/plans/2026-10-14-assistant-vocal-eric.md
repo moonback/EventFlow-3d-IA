@@ -246,6 +246,15 @@ Carte « Confirmer » ◄────────── action ────┘  
 - `Permissions-Policy: microphone=(self)` ; permission `assistant:use` (tous les rôles internes, pas `READ_ONLY`) ;
 - tests : `tests/unit/assistant.test.ts` (13), `tests/integration/assistant-gateway.test.ts` (12, faux Gemini, vraie base).
 
+**Étape B « Eric sait » — livrée** :
+- 23 outils « données » en lecture seule (`src/server/assistant/data-tools.ts`), une seule source : nom, libellé, description, schéma Zod (→ `parametersJsonSchema`), permissions, exécution ; acceptés par `gemini-3.8-live` (`npm run assistant:check` envoie les vraies déclarations) ;
+- passerelle : exécution parallèle des `toolCall` (8 au plus), délai de 10 s (`TIMEOUT`), `toolCallCancellation` respecté, messages `tool` vers le navigateur, journal `AssistantToolCall` (migration `assistant_tool_calls`) ;
+- compacteur : dates locales **avec le jour de la semaine** (trouvé en test réel : le modèle annonçait « jeudi » pour un vendredi), décimaux, bruit d'interface retiré, taille bornée ; dates impossibles refusées ;
+- persona : outils obligatoires pour toute donnée, codes d'erreur expliqués, données ≠ instructions, vouvoiement renforcé ;
+- client : indicateur « Eric consulte … », reconnexion automatique (1 s, 2 s, 4 s) après coupure réseau ou redémarrage de la passerelle ;
+- tests : `tests/unit/assistant-tools.test.ts`, `tests/integration/assistant-tools.test.ts` (chaque outil exécuté sur la vraie base, droits, retrait de permission par organisation, isolation), routage d'outils dans `assistant-gateway.test.ts` ;
+- vérifié avec le vrai Gemini sur la base de démo : événements de la quinzaine, jour et heure de Nova X, stock et emplacements des lyres, personnel et véhicules du mariage Fournier — toutes les réponses contrôlées contre la base ; marge refusée au responsable logistique (`FORBIDDEN`).
+
 Reste à vérifier : conversation **au micro** sur un vrai navigateur (le navigateur de prévisualisation bloque le micro ; testé au clavier, voix et interruption comprises) ; mode `enterprise` avec un vrai projet Google Cloud ; choix d'une voix masculine française (`GEMINI_LIVE_VOICE`).
 
 ## Ordre de livraison conseillé

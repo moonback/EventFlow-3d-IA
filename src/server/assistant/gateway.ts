@@ -1,14 +1,16 @@
 import "server-only";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { Duplex } from "node:stream";
-import type { LiveServerMessage } from "@google/genai";
+import type { FunctionCall, FunctionDeclaration, LiveServerMessage } from "@google/genai";
 import { WebSocketServer, type RawData, type WebSocket } from "ws";
 import { buildSystemInstruction } from "@/features/assistant/persona";
 import { ASSISTANT_WS_PATH, CLOSE_CODES, MAX_AUDIO_FRAME_BYTES, parseClientMessage, type AssistantErrorCode, type ServerMessage } from "@/features/assistant/protocol";
+import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import { can, type AuthContext } from "../auth/context";
 import { resolveSessionToken, sessionTokenFromCookieHeader } from "../auth/session-token";
-import type { LiveConnector, LiveSessionLike } from "./live-session";
+import { dataToolDeclarations, findDataTool, runDataTool, type ToolOutcome } from "./data-tools";
+import type { LiveConnector, LiveSessionLike, ToolResponse } from "./live-session";
 
 export interface GatewayOptions {
   connector: LiveConnector;
@@ -23,6 +25,10 @@ export interface GatewayOptions {
   /** Fréquence de revalidation de la session EventFlow pendant la conversation */
   revalidateMs?: number;
   resolveSession?: (token: string) => Promise<AuthContext | null>;
+  /** Outils déclarés au modèle et leur exécution (défaut : outils « données ») */
+  tools?: FunctionDeclaration[];
+  runTool?: (ctx: AuthContext, name: string, args: unknown) => Promise<ToolOutcome>;
+  toolTimeoutMs?: number;
   log?: (event: string, data?: Record<string, unknown>) => void;
 }
 
@@ -34,6 +40,8 @@ export interface AssistantGateway {
 const STATUS_TEXT: Record<number, string> = { 401: "Unauthorized", 403: "Forbidden", 404: "Not Found", 503: "Service Unavailable" };
 /** Nombre de reconnexions Live consécutives tolérées (goAway, coupure réseau) */
 const MAX_LIVE_RECONNECTS = 3;
+/** Appels d'outils exécutés par message `toolCall` (les suivants sont refusés) */
+const MAX_PARALLEL_TOOLS = 8;
 
 function reject(socket: Duplex, status: number) {
   socket.write(`HTTP/1.1 ${status} ${STATUS_TEXT[status] ?? "Error"}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
@@ -56,6 +64,9 @@ export async function startAssistantGateway(options: GatewayOptions): Promise<As
     maxDurationMs: options.maxDurationMs ?? e.ASSISTANT_MAX_SESSION_MINUTES * 60_000,
     revalidateMs: options.revalidateMs ?? 60_000,
     resolveSession: options.resolveSession ?? resolveSessionToken,
+    tools: options.tools ?? dataToolDeclarations(),
+    runTool: options.runTool ?? runDataTool,
+    toolTimeoutMs: options.toolTimeoutMs ?? 10_000,
     log: options.log ?? ((event: string, data?: Record<string, unknown>) => console.info(`[assistant] ${event}`, data ?? {})),
     connector: options.connector,
   };
@@ -119,6 +130,9 @@ type ResolvedOptions = {
   maxDurationMs: number;
   revalidateMs: number;
   resolveSession: (token: string) => Promise<AuthContext | null>;
+  tools: FunctionDeclaration[];
+  runTool: (ctx: AuthContext, name: string, args: unknown) => Promise<ToolOutcome>;
+  toolTimeoutMs: number;
   log: (event: string, data?: Record<string, unknown>) => void;
   connector: LiveConnector;
 };
@@ -134,6 +148,8 @@ class AssistantConnection {
   private lastActivity = Date.now();
   private readonly startedAt = Date.now();
   private readonly pendingTexts: string[] = [];
+  /** Appels d'outils annulés par le modèle (l'utilisateur a repris la parole) */
+  private readonly cancelledCalls = new Set<string>();
   private readonly timers: NodeJS.Timeout[] = [];
 
   constructor(
@@ -179,9 +195,11 @@ class AssistantConnection {
           userName: this.ctx.user.name,
           role: this.ctx.role,
           timezone: this.ctx.organization.timezone,
+          currency: this.ctx.organization.currency,
           now: new Date(),
         }),
         resumeHandle: this.resumeHandle,
+        tools: this.opts.tools,
         events: {
           onMessage: (m) => {
             if (isCurrent()) this.onLiveMessage(m);
@@ -246,9 +264,47 @@ class AssistantConnection {
       if (content.interrupted) this.send({ type: "interrupted" });
       if (content.turnComplete) this.send({ type: "turn_complete" });
     }
+    if (m.toolCall?.functionCalls?.length) void this.runToolCalls(m.toolCall.functionCalls);
+    for (const id of m.toolCallCancellation?.ids ?? []) this.cancelledCalls.add(id);
     const update = m.sessionResumptionUpdate;
     if (update?.resumable && update.newHandle) this.resumeHandle = update.newHandle;
     if (m.goAway) this.reconnectLive("goAway");
+  }
+
+  /** Exécute les appels d'outils en parallèle puis renvoie toutes les réponses à Gemini. */
+  private async runToolCalls(calls: FunctionCall[]) {
+    const generation = this.generation;
+    this.lastActivity = Date.now();
+    const responses = await Promise.all(calls.map((call, index) => this.runToolCall(call, index < MAX_PARALLEL_TOOLS)));
+    // Session Live remplacée entre-temps (reprise) : l'appel n'est plus attendu
+    if (this.closed || generation !== this.generation || !this.live) return;
+    const pending = responses.filter((r) => !this.cancelledCalls.has(r.id));
+    for (const r of responses) this.cancelledCalls.delete(r.id);
+    if (pending.length) this.live.sendToolResponses(pending);
+  }
+
+  private async runToolCall(call: FunctionCall, allowed: boolean): Promise<ToolResponse> {
+    const id = call.id ?? "";
+    const name = call.name ?? "";
+    const label = findDataTool(name)?.label ?? name;
+    const started = Date.now();
+    this.send({ type: "tool", id, label, state: "running" });
+    let outcome: ToolOutcome;
+    if (!allowed) outcome = { ok: false, error: "TOO_MANY_CALLS", message: `${MAX_PARALLEL_TOOLS} consultations au plus à la fois` };
+    else {
+      let timer: NodeJS.Timeout | undefined;
+      const timeout = new Promise<ToolOutcome>((resolve) => {
+        timer = setTimeout(() => resolve({ ok: false, error: "TIMEOUT", message: "La consultation a pris trop de temps" }), this.opts.toolTimeoutMs);
+      });
+      outcome = await Promise.race([this.opts.runTool(this.ctx, name, call.args ?? {}), timeout]).finally(() => clearTimeout(timer));
+    }
+    const durationMs = Date.now() - started;
+    this.send({ type: "tool", id, label, state: outcome.ok ? "done" : "error" });
+    this.opts.log("tool", { userId: this.ctx.userId, tool: name, ok: outcome.ok, error: outcome.ok ? undefined : outcome.error, durationMs });
+    await db.assistantToolCall
+      .create({ data: { organizationId: this.ctx.organizationId, userId: this.ctx.userId, tool: name.slice(0, 64), ok: outcome.ok, errorCode: outcome.ok ? null : outcome.error, durationMs } })
+      .catch((error: unknown) => this.opts.log("tool_log_failed", { message: error instanceof Error ? error.message : String(error) }));
+    return { id, name, response: outcome.ok ? { output: outcome.output } : { error: outcome.error, message: outcome.message } };
   }
 
   private onClientMessage(data: RawData, isBinary: boolean) {

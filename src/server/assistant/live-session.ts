@@ -1,5 +1,5 @@
 import "server-only";
-import { GoogleGenAI, Modality, type LiveConnectConfig, type LiveServerMessage, type Session } from "@google/genai";
+import { GoogleGenAI, Modality, type FunctionDeclaration, type LiveConnectConfig, type LiveServerMessage, type Session } from "@google/genai";
 import { MIC_SAMPLE_RATE } from "@/features/assistant/protocol";
 import { env } from "@/lib/env";
 
@@ -12,7 +12,15 @@ export interface LiveSessionLike {
   sendAudio(pcm: Buffer): void;
   sendAudioEnd(): void;
   sendText(text: string): void;
+  /** Réponses aux appels d'outils (`toolCall`) */
+  sendToolResponses(responses: ToolResponse[]): void;
   close(): void;
+}
+
+export interface ToolResponse {
+  id: string;
+  name: string;
+  response: Record<string, unknown>;
 }
 
 export interface LiveSessionEvents {
@@ -26,16 +34,19 @@ export interface LiveConnectOptions {
   systemInstruction: string;
   /** Poignée de reprise de session (après un `goAway` ou une coupure) */
   resumeHandle?: string;
+  /** Outils déclarés au modèle */
+  tools: FunctionDeclaration[];
   events: LiveSessionEvents;
 }
 
 export type LiveConnector = (options: LiveConnectOptions) => Promise<LiveSessionLike>;
 
 /** Configuration Live commune : audio en sortie, transcriptions, reprise et compression de contexte. */
-export function liveConfig(options: Pick<LiveConnectOptions, "systemInstruction" | "resumeHandle">, voice?: string): LiveConnectConfig {
+export function liveConfig(options: Pick<LiveConnectOptions, "systemInstruction" | "resumeHandle" | "tools">, voice?: string): LiveConnectConfig {
   return {
     responseModalities: [Modality.AUDIO],
     systemInstruction: options.systemInstruction,
+    ...(options.tools.length ? { tools: [{ functionDeclarations: options.tools }] } : {}),
     speechConfig: {
       languageCode: "fr-FR",
       ...(voice ? { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } } : {}),
@@ -80,6 +91,7 @@ export function createGeminiConnector(): LiveConnector {
       // Les modèles Live 3.x réservent `sendClientContent` à l'amorçage de l'historique : le texte
       // en cours de conversation passe par l'entrée temps réel, comme la voix
       sendText: (text) => session.sendRealtimeInput({ text }),
+      sendToolResponses: (functionResponses) => session.sendToolResponse({ functionResponses }),
       close: () => session.close(),
     };
   };

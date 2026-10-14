@@ -7,6 +7,7 @@
 import { env } from "../src/lib/env";
 import { buildSystemInstruction } from "../src/features/assistant/persona";
 import { SPEAKER_SAMPLE_RATE } from "../src/features/assistant/protocol";
+import { dataToolDeclarations } from "../src/server/assistant/data-tools";
 import { createGeminiConnector } from "../src/server/assistant/live-session";
 
 const TIMEOUT_MS = 30_000;
@@ -27,7 +28,9 @@ async function main() {
 
   const t0 = Date.now();
   const session = await createGeminiConnector()({
-    systemInstruction: buildSystemInstruction({ organizationName: "Agence de test", userName: "Testeur", role: "OWNER", timezone: "Europe/Paris", now: new Date() }),
+    systemInstruction: buildSystemInstruction({ organizationName: "Agence de test", userName: "Testeur", role: "OWNER", timezone: "Europe/Paris", currency: "EUR", now: new Date() }),
+    // Déclarations réelles : vérifie aussi que le modèle accepte leurs schémas
+    tools: dataToolDeclarations(),
     events: {
       onMessage: (m) => {
         for (const part of m.serverContent?.modelTurn?.parts ?? []) {

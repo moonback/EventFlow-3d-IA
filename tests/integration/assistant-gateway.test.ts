@@ -6,8 +6,8 @@ import { db } from "@/lib/db";
 import type { AuthContext } from "@/server/auth/context";
 import { generateToken, hashToken } from "@/server/auth/tokens";
 import { startAssistantGateway, type AssistantGateway, type GatewayOptions } from "@/server/assistant/gateway";
-import type { LiveConnectOptions, LiveConnector, LiveSessionLike } from "@/server/assistant/live-session";
-import { createOrg, createUserInOrg } from "../helpers/factories";
+import type { LiveConnectOptions, LiveConnector, LiveSessionLike, ToolResponse } from "@/server/assistant/live-session";
+import { createEvent, createOrg, createUserInOrg, day } from "../helpers/factories";
 
 const ORIGIN = "http://localhost:3000";
 
@@ -15,6 +15,7 @@ const ORIGIN = "http://localhost:3000";
 class FakeLive implements LiveSessionLike {
   audio: Buffer[] = [];
   texts: string[] = [];
+  toolResponses: ToolResponse[][] = [];
   audioEnds = 0;
   closed = false;
   constructor(readonly options: LiveConnectOptions) {}
@@ -26,6 +27,9 @@ class FakeLive implements LiveSessionLike {
   }
   sendText(text: string) {
     this.texts.push(text);
+  }
+  sendToolResponses(responses: ToolResponse[]) {
+    this.toolResponses.push(responses);
   }
   close() {
     this.closed = true;
@@ -266,5 +270,80 @@ describe("minuteries et revalidation", () => {
     await db.session.deleteMany({ where: { tokenHash: hashToken(token) } });
     await c.waitFor((m) => m.type === "error" && m.code === "SESSION_EXPIRED");
     expect(await c.closed).toBe(4401);
+  });
+});
+
+describe("outils", () => {
+  it("déclare les outils « données » au modèle", async () => {
+    const before = sessions.length;
+    const c = await connect(port, { cookie });
+    await c.waitFor(isReady);
+    const names = sessions[before]!.options.tools.map((t) => t.name);
+    expect(names).toEqual(expect.arrayContaining(["search", "list_events", "get_event", "find_equipment", "finance_overview"]));
+    c.ws.close();
+    await c.closed;
+  });
+
+  it("exécute un appel avec les droits de l'utilisateur, le signale au navigateur et le journalise", async () => {
+    const event = await createEvent(ctx.organizationId, day(20), day(21));
+    const before = sessions.length;
+    const c = await connect(port, { cookie });
+    await c.waitFor(isReady);
+    const live = sessions[before]!;
+    live.emit({
+      toolCall: {
+        functionCalls: [
+          { id: "c1", name: "search", args: { query: event.name } },
+          // Rôle logistique : pas de finance:read
+          { id: "c2", name: "get_event_financials", args: { event_id: event.id } },
+        ],
+      },
+    });
+    await until(() => live.toolResponses.length === 1);
+    const [search, finance] = live.toolResponses[0]!;
+    expect(search).toMatchObject({ id: "c1", name: "search" });
+    expect(search!.response.output).toEqual(expect.arrayContaining([expect.objectContaining({ type: "event", id: event.id })]));
+    expect(finance).toMatchObject({ id: "c2", response: { error: "FORBIDDEN" } });
+    await c.waitFor((m) => m.type === "tool" && m.id === "c2" && m.state === "error");
+    expect(c.messages).toContainEqual({ type: "tool", id: "c1", label: "recherche dans EventFlow", state: "running" });
+    expect(c.messages).toContainEqual({ type: "tool", id: "c1", label: "recherche dans EventFlow", state: "done" });
+    const logged = await db.assistantToolCall.findMany({ where: { userId: ctx.userId, tool: { in: ["search", "get_event_financials"] } }, orderBy: { tool: "desc" } });
+    expect(logged.map((l) => [l.tool, l.ok, l.errorCode])).toEqual([
+      ["search", true, null],
+      ["get_event_financials", false, "FORBIDDEN"],
+    ]);
+    c.ws.close();
+    await c.closed;
+  });
+
+  it("n'envoie pas la réponse d'un appel annulé par le modèle", async () => {
+    let release: () => void = () => undefined;
+    const g = await gateway({ runTool: () => new Promise((resolve) => (release = () => resolve({ ok: true, output: "tard" }))) });
+    const before = sessions.length;
+    const c = await connect(g.port, { cookie });
+    await c.waitFor(isReady);
+    const live = sessions[before]!;
+    live.emit({ toolCall: { functionCalls: [{ id: "lent", name: "search", args: { query: "x" } }] } });
+    await c.waitFor((m) => m.type === "tool" && m.state === "running");
+    live.emit({ toolCallCancellation: { ids: ["lent"] } });
+    release();
+    await c.waitFor((m) => m.type === "tool" && m.state === "done");
+    await new Promise((r) => setTimeout(r, 50));
+    expect(live.toolResponses).toEqual([]);
+    c.ws.close();
+    await c.closed;
+  });
+
+  it("répond TIMEOUT quand une consultation dépasse le délai", async () => {
+    const g = await gateway({ runTool: () => new Promise(() => undefined), toolTimeoutMs: 100 });
+    const before = sessions.length;
+    const c = await connect(g.port, { cookie });
+    await c.waitFor(isReady);
+    const live = sessions[before]!;
+    live.emit({ toolCall: { functionCalls: [{ id: "t1", name: "get_overview", args: {} }] } });
+    await until(() => live.toolResponses.length === 1);
+    expect(live.toolResponses[0]).toEqual([{ id: "t1", name: "get_overview", response: { error: "TIMEOUT", message: "La consultation a pris trop de temps" } }]);
+    c.ws.close();
+    await c.closed;
   });
 });

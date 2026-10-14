@@ -1,5 +1,5 @@
 "use client";
-import { AudioLines, Mic, MicOff, PhoneOff, Send, X } from "lucide-react";
+import { AudioLines, Loader2, Mic, MicOff, PhoneOff, Send, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -80,7 +80,7 @@ export function AssistantPanel() {
       <div ref={scroller} className="flex min-h-24 flex-1 flex-col gap-2 overflow-y-auto px-3 py-2" aria-live="polite">
         {a.lines.length === 0 ? (
           <p className="text-xs text-muted-foreground">
-            {connected ? "Parlez, Eric vous écoute. Vous pouvez lui couper la parole à tout moment." : "Eric, le régisseur virtuel, répond à la voix en temps réel."}
+            {connected ? "Parlez, Eric vous écoute. Vous pouvez lui couper la parole à tout moment." : "Eric, le régisseur virtuel, répond à la voix en temps réel sur vos événements, le stock, les véhicules, l'équipe et les finances."}
           </p>
         ) : (
           a.lines.map((l) => (
@@ -90,6 +90,11 @@ export function AssistantPanel() {
             </p>
           ))
         )}
+        {a.activity ? (
+          <p className="flex items-center gap-1.5 self-start text-xs text-muted-foreground">
+            <Loader2 className="size-3 animate-spin" aria-hidden /> Eric consulte {a.activity}…
+          </p>
+        ) : null}
         {a.error ? <p className="text-xs text-destructive">{a.error}</p> : null}
       </div>
 

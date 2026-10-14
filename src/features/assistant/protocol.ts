@@ -35,6 +35,8 @@ export type ServerMessage =
   | { type: "interrupted" }
   /** Eric a terminé son tour de parole */
   | { type: "turn_complete" }
+  /** Eric consulte des données (outil en cours, terminé ou en échec) */
+  | { type: "tool"; id: string; label: string; state: "running" | "done" | "error" }
   | { type: "error"; code: AssistantErrorCode; message: string };
 
 export type AssistantErrorCode = "LIVE_UNAVAILABLE" | "BAD_MESSAGE" | "SESSION_EXPIRED" | "IDLE_TIMEOUT" | "MAX_DURATION" | "REPLACED";

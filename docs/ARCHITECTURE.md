@@ -87,6 +87,16 @@ Navigateur ── micro PCM 16 kHz ──> passerelle /ws/assistant (Node, `ws`)
   pendant la conversation ; une seule conversation par utilisateur.
 - `src/server/assistant/live-session.ts` isole Gemini derrière l'interface `LiveConnector`
   (faux connecteur dans les tests). Reprise de session sur `goAway` grâce à la dernière poignée.
+- **Outils « données »** (`src/server/assistant/data-tools.ts`) : 23 outils en lecture seule
+  (recherche, tableau de bord, événements, stock, disponibilité, réservations, logistique,
+  véhicules, équipe, clients, devis, factures, finances, tâches, maintenance, notifications),
+  déclarés à Gemini depuis leurs schémas Zod. La passerelle les exécute avec l'`AuthContext` de
+  l'utilisateur : contrôle des permissions de l'outil, puis des services (`assertCan`, filtrage
+  par organisation). Les réponses sont compactées (`compact.ts` : heures locales précédées du jour
+  de la semaine, décimaux en texte, listes et textes tronqués, 12 000 caractères au plus). Les
+  erreurs deviennent des codes explicites pour le modèle (`FORBIDDEN`, `NOT_FOUND`,
+  `INVALID_ARGUMENTS`, `TIMEOUT`…). Chaque appel est journalisé dans `AssistantToolCall`
+  (outil, succès, durée : ni arguments ni contenu).
 - Protocole (`src/features/assistant/protocol.ts`) : trames binaires = audio, trames texte = JSON
   validé par Zod. Côté client : `src/assistant/` (micro, lecteur, hook `useAssistant`) et le
   panneau `src/three/ui/assistant-panel.tsx`.

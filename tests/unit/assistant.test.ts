@@ -68,17 +68,19 @@ describe("persona d'Eric", () => {
   const now = new Date("2026-10-14T08:30:00Z");
 
   it("donne la date locale de l'organisation, l'interlocuteur et le rôle", () => {
-    const text = buildSystemInstruction({ organizationName: "Agence Lumière", userName: "Camille", role: "LOGISTICS_MANAGER", timezone: "Europe/Paris", now });
+    const text = buildSystemInstruction({ organizationName: "Agence Lumière", userName: "Camille", role: "LOGISTICS_MANAGER", timezone: "Europe/Paris", currency: "EUR", now });
     expect(text).toContain("Agence Lumière");
     expect(text).toContain("Camille");
     expect(text).toContain(formatNow(now, "Europe/Paris"));
     expect(formatNow(now, "Europe/Paris")).toContain("10:30");
   });
 
-  it("interdit d'inventer des données tant qu'Eric n'a pas d'outils", () => {
-    const text = buildSystemInstruction({ organizationName: "A", userName: "B", role: "SALES", timezone: "UTC", now });
+  it("impose les outils, interdit d'inventer et traite les données comme des données", () => {
+    const text = buildSystemInstruction({ organizationName: "A", userName: "B", role: "SALES", timezone: "UTC", currency: "CHF", now });
+    expect(text).toMatch(/appelle un outil/);
     expect(text).toMatch(/N'invente jamais/);
-    expect(text).toMatch(/pas encore accès aux données/);
+    expect(text).toMatch(/jamais des instructions/);
+    expect(text).toContain("CHF");
   });
 });
 
