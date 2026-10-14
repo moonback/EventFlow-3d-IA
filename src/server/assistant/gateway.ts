@@ -12,6 +12,7 @@ import { audit } from "../audit";
 import { can, type AuthContext } from "../auth/context";
 import { resolveSessionToken, sessionTokenFromCookieHeader } from "../auth/session-token";
 import { actionToolDeclarations, findActionTool } from "./action-tools";
+import { assistantOrgSettings, type AssistantOrgSettings } from "./availability";
 import { dataToolDeclarations, findDataTool, runDataTool, toolError, type ToolOutcome } from "./data-tools";
 import type { LiveConnector, LiveSessionLike, ToolResponse } from "./live-session";
 
@@ -28,6 +29,8 @@ export interface GatewayOptions {
   /** Fréquence de revalidation de la session EventFlow pendant la conversation */
   revalidateMs?: number;
   resolveSession?: (token: string) => Promise<AuthContext | null>;
+  /** Réglages de l'organisation (activation, voix, durée) — défaut : lus en base */
+  orgSettings?: (organizationId: string) => Promise<AssistantOrgSettings>;
   /** Outils déclarés au modèle et leur exécution (défaut : outils « données ») */
   tools?: FunctionDeclaration[];
   runTool?: (ctx: AuthContext, name: string, args: unknown) => Promise<ToolOutcome>;
@@ -75,6 +78,7 @@ export async function startAssistantGateway(options: GatewayOptions): Promise<As
     maxDurationMs: options.maxDurationMs ?? e.ASSISTANT_MAX_SESSION_MINUTES * 60_000,
     revalidateMs: options.revalidateMs ?? 60_000,
     resolveSession: options.resolveSession ?? resolveSessionToken,
+    orgSettings: options.orgSettings ?? assistantOrgSettings,
     tools: options.tools ?? [...dataToolDeclarations(), ...worldToolDeclarations(), ...actionToolDeclarations()],
     runTool: options.runTool ?? runDataTool,
     toolTimeoutMs: options.toolTimeoutMs ?? 10_000,
@@ -107,11 +111,14 @@ export async function startAssistantGateway(options: GatewayOptions): Promise<As
       const ctx = token ? await opts.resolveSession(token) : null;
       if (!token || !ctx) return reject(socket, 401);
       if (!can(ctx, "assistant:use")) return reject(socket, 403);
+      // Assistant désactivé par l'organisation (Paramètres → Organisation)
+      const org = await opts.orgSettings(ctx.organizationId);
+      if (!org.orgEnabled) return reject(socket, 403);
 
       wss.handleUpgrade(req, socket, head, (ws) => {
         // Une seule conversation par utilisateur : la nouvelle (autre onglet, rechargement) remplace l'ancienne
         active.get(ctx.userId)?.terminate("REPLACED", CLOSE_CODES.REPLACED, "Conversation ouverte ailleurs");
-        const conn = new AssistantConnection(ws, ctx, token, opts, () => {
+        const conn = new AssistantConnection(ws, ctx, token, opts, org, () => {
           if (active.get(ctx.userId) === conn) active.delete(ctx.userId);
         });
         active.set(ctx.userId, conn);
@@ -143,6 +150,7 @@ type ResolvedOptions = {
   maxDurationMs: number;
   revalidateMs: number;
   resolveSession: (token: string) => Promise<AuthContext | null>;
+  orgSettings: (organizationId: string) => Promise<AssistantOrgSettings>;
   tools: FunctionDeclaration[];
   runTool: (ctx: AuthContext, name: string, args: unknown) => Promise<ToolOutcome>;
   toolTimeoutMs: number;
@@ -176,6 +184,7 @@ class AssistantConnection {
     private readonly ctx: AuthContext,
     private readonly token: string,
     private readonly opts: ResolvedOptions,
+    private readonly org: AssistantOrgSettings,
     private readonly onEnd: () => void,
   ) {
     ws.on("message", (data, isBinary) => this.onClientMessage(data, isBinary));
@@ -190,10 +199,16 @@ class AssistantConnection {
       setInterval(() => {
         if (Date.now() - this.lastActivity > this.opts.idleMs) this.terminate("IDLE_TIMEOUT", CLOSE_CODES.IDLE_TIMEOUT, "Conversation fermée après une période d'inactivité");
       }, Math.min(5_000, this.opts.idleMs)),
-      setTimeout(() => this.terminate("MAX_DURATION", CLOSE_CODES.MAX_DURATION, "Durée maximale de conversation atteinte"), this.opts.maxDurationMs),
+      setTimeout(() => this.terminate("MAX_DURATION", CLOSE_CODES.MAX_DURATION, "Durée maximale de conversation atteinte"), this.maxDurationMs()),
       setInterval(() => void this.revalidate(), this.opts.revalidateMs),
     );
     await this.connectLive();
+  }
+
+  /** Durée maximale : celle choisie par l'organisation, jamais au-delà de la limite du serveur. */
+  private maxDurationMs() {
+    const orgMs = this.org.maxSessionMinutes ? this.org.maxSessionMinutes * 60_000 : Infinity;
+    return Math.min(this.opts.maxDurationMs, orgMs);
   }
 
   /** Fermeture de la conversation, avec un message d'erreur explicite si `code` est fourni. */
@@ -218,6 +233,7 @@ class AssistantConnection {
           now: new Date(),
         }),
         resumeHandle: this.resumeHandle,
+        voice: this.org.voice,
         tools: this.opts.tools,
         events: {
           onMessage: (m) => {
@@ -466,7 +482,11 @@ class AssistantConnection {
     const ctx = await this.opts.resolveSession(this.token).catch(() => null);
     if (!ctx || ctx.userId !== this.ctx.userId || !can(ctx, "assistant:use")) {
       this.terminate("SESSION_EXPIRED", CLOSE_CODES.SESSION_EXPIRED, "Votre session a expiré, reconnectez-vous");
+      return;
     }
+    // L'assistant peut être désactivé dans les paramètres pendant la conversation
+    const org = await this.opts.orgSettings(ctx.organizationId).catch(() => null);
+    if (!this.closed && org && !org.orgEnabled) this.terminate("DISABLED", CLOSE_CODES.DISABLED, "L'assistant Eric a été désactivé pour votre organisation");
   }
 
   private send(message: ServerMessage) {

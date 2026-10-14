@@ -34,6 +34,8 @@ export interface LiveConnectOptions {
   systemInstruction: string;
   /** Poignée de reprise de session (après un `goAway` ou une coupure) */
   resumeHandle?: string;
+  /** Voix prédéfinie choisie par l'organisation (sinon GEMINI_LIVE_VOICE) */
+  voice?: string;
   /** Outils déclarés au modèle */
   tools: FunctionDeclaration[];
   events: LiveSessionEvents;
@@ -78,7 +80,7 @@ export function createGeminiConnector(): LiveConnector {
   return async ({ events, ...options }) => {
     const session: Session = await ai.live.connect({
       model: e.GEMINI_LIVE_MODEL,
-      config: liveConfig(options, e.GEMINI_LIVE_VOICE),
+      config: liveConfig(options, options.voice ?? e.GEMINI_LIVE_VOICE),
       callbacks: {
         onmessage: (m) => events.onMessage(m),
         onerror: (err) => events.onError(err.message || "Erreur de la session Gemini Live"),

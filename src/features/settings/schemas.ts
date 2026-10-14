@@ -54,3 +54,25 @@ export const notificationPrefsSchema = z.object({
     )
     .max(20),
 });
+
+/** Voix prédéfinies de Gemini Live proposées pour Eric (toutes parlent français). */
+export const ASSISTANT_VOICES = [
+  { value: "Charon", label: "Charon — grave, posée" },
+  { value: "Puck", label: "Puck — enjouée" },
+  { value: "Orus", label: "Orus — ferme" },
+  { value: "Fenrir", label: "Fenrir — énergique" },
+  { value: "Kore", label: "Kore — claire, assurée" },
+  { value: "Aoede", label: "Aoede — légère" },
+  { value: "Leda", label: "Leda — jeune" },
+  { value: "Zephyr", label: "Zephyr — lumineuse" },
+] as const;
+
+/** Réglages de l'assistant vocal Eric pour l'organisation (Paramètres → Organisation). */
+export const assistantSettingsSchema = z.object({
+  enabled: z.boolean(),
+  /** null : voix par défaut du serveur */
+  voice: z.enum(ASSISTANT_VOICES.map((v) => v.value) as [string, ...string[]]).nullable(),
+  /** null : durée maximale du serveur */
+  maxSessionMinutes: z.number().int().min(1).max(240).nullable(),
+});
+export type AssistantSettingsInput = z.input<typeof assistantSettingsSchema>;

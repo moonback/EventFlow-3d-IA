@@ -1,7 +1,8 @@
 import { PageHeader } from "@/components/feedback/page-header";
 import { pageContext } from "@/server/auth/page";
 import { env } from "@/lib/env";
-import { getOrganizationSettings } from "@/server/services/settings-service";
+import { getAssistantSettings, getOrganizationSettings } from "@/server/services/settings-service";
+import { AssistantCard } from "./assistant-card";
 import { PublicFormCard } from "./public-form-card";
 import { OrganizationForm } from "./organization-form";
 
@@ -9,7 +10,7 @@ export const metadata = { title: "Organisation" };
 
 export default async function OrganizationPage() {
   const ctx = await pageContext("settings:manage");
-  const o = await getOrganizationSettings(ctx);
+  const [o, assistant] = await Promise.all([getOrganizationSettings(ctx), getAssistantSettings(ctx)]);
   return (
     <>
       <PageHeader title="Organisation" breadcrumbs={[{ label: "Paramètres", href: "/settings" }, { label: "Organisation" }]} />
@@ -22,6 +23,7 @@ export default async function OrganizationPage() {
         }}
       />
       <PublicFormCard enabled={o.publicRequestFormEnabled} url={`${env().APP_URL}/demande/${o.slug}`} />
+      <AssistantCard initial={assistant} />
     </>
   );
 }

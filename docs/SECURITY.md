@@ -87,6 +87,11 @@
 
 ## Assistant vocal Eric
 
+- Activation par organisation (Paramètres → Organisation, permission `settings:manage`, action
+  auditée `settings.assistant_updated`) : vérifiée côté serveur à l'ouverture de la connexion
+  (refus 403) et à chaque revalidation de session — une conversation en cours est coupée
+  (code `DISABLED`) dès que l'assistant est désactivé. La voix est choisie dans une liste fermée
+  et la durée maximale ne peut pas dépasser la limite du serveur.
 - Passerelle WebSocket authentifiée par le cookie de session, origine contrôlée (`APP_URL`),
   permission `assistant:use` (refusée au rôle lecture seule), session revalidée pendant la
   conversation, une conversation par utilisateur. Les identifiants Google ne quittent pas le
