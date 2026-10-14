@@ -20,7 +20,9 @@ test.describe("Application de bureau — serveur local embarqué", () => {
 
   test("ouvre une fenêtre native sécurisée qui affiche le vrai frontend", async () => {
     const { app, page } = ctx;
-    await expect(page.getByRole("button", { name: "Se connecter" })).toBeVisible();
+    // Sans session, la page d'accueil publique : titre et accès à la connexion
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Se connecter" }).first()).toBeVisible();
     const props = await app.evaluate(({ BrowserWindow }) => {
       const win = BrowserWindow.getAllWindows()[0]!;
       const prefs = (win.webContents as unknown as LastPrefs).getLastWebPreferences();

@@ -43,13 +43,15 @@ export async function launch(opts: { userData: string; env: Record<string, strin
 
 export async function launchLocal(userData = makeProfile(testServerEnv())) {
   const launched = await launch({ userData, env: { EVENTFLOW_SERVER_MODE: "local" } });
-  // Sondage plutôt que waitForURL : la redirection /dashboard → /login interrompt la première navigation
-  await expect.poll(() => launched.page.url(), { timeout: 100_000 }).toMatch(new RegExp(`^${LOCAL_ORIGIN.replace(/\./g, "\\.")}/(login|dashboard)`));
+  // Sondage plutôt que waitForURL : la redirection /dashboard → /login interrompt la première navigation.
+  // Sans session, l'application s'ouvre sur la page d'accueil (/).
+  await expect.poll(() => launched.page.url(), { timeout: 100_000 }).toMatch(new RegExp(`^${LOCAL_ORIGIN.replace(/\./g, "\\.")}/(login|dashboard|$)`));
   await launched.page.waitForLoadState("load");
   return launched;
 }
 
 export async function login(page: Page, email = OWNER, password = E2E_PASSWORD) {
+  if (!page.url().includes("/login")) await page.goto(`${LOCAL_ORIGIN}/login`);
   await expect.poll(() => page.url()).toContain("/login");
   await page.getByLabel("Adresse e-mail").fill(email);
   await page.getByLabel("Mot de passe").fill(password);

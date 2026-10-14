@@ -19,7 +19,9 @@ import { loadWindowState, trackWindowState } from "./window-state";
 const APP_ID = "fr.eventflow.desktop";
 /** Partition persistante dédiée : cookies de session chiffrés sur disque (fusible EnableCookieEncryption). */
 const PARTITION = "persist:eventflow";
-const START_PATH = "/dashboard";
+/** Page d'accueil pour un visiteur ; un utilisateur déjà connecté arrive sur son tableau de bord. */
+const WELCOME_PATH = "/";
+const DASHBOARD_PATH = "/dashboard";
 
 app.setName("EventFlow");
 app.setAppUserModelId(APP_ID);
@@ -113,7 +115,7 @@ async function start() {
       await waitForHealth(target.origin, { timeoutMs: target.mode === "dev" ? 180_000 : 20_000 });
     }
     if (generation !== startGeneration || !mainWindow) return;
-    const url = lastAppUrl && isTrustedUrl(lastAppUrl, trustedOrigin) ? lastAppUrl : trustedOrigin + START_PATH;
+    const url = lastAppUrl && isTrustedUrl(lastAppUrl, trustedOrigin) ? lastAppUrl : trustedOrigin + (await startPath(trustedOrigin));
     log.info(`Chargement de ${new URL(url).origin}`);
     await mainWindow.loadURL(url).catch((e: unknown) => log.warn("Chargement interrompu", e));
   } catch (error) {
@@ -124,6 +126,15 @@ async function start() {
       await showError(error);
     }
   }
+}
+
+/** Même règle que la page d'accueil web : la présence du cookie de session décide de la première page. */
+async function startPath(origin: string) {
+  const cookies = await session
+    .fromPartition(PARTITION)
+    .cookies.get({ url: origin, name: "ef_session" })
+    .catch(() => []);
+  return cookies.some((c) => c.value) ? DASHBOARD_PATH : WELCOME_PATH;
 }
 
 function openInApp(p: string) {
@@ -241,7 +252,8 @@ if (!app.requestSingleInstanceLock()) {
 
     buildMenu({
       window: () => mainWindow,
-      goHome: () => openInApp(START_PATH),
+      goHome: () => openInApp(DASHBOARD_PATH),
+      goWelcome: () => openInApp(WELCOME_PATH),
       reload: () => {
         const url = mainWindow?.webContents.getURL() ?? "";
         if (isTrustedUrl(url, trustedOrigin)) mainWindow?.webContents.reload();
