@@ -11,19 +11,18 @@ out/
 /storage/
 backups/
 
-# Tests & reports
+# Tests & reports — not needed for the production build
 coverage/
 playwright-report/
 test-results/
 blob-report/
 tests/
+playwright.config.ts
 
-# Env files — set these in the Vercel dashboard, never upload
-.env
-.env.local
-.env.*.local
-.env.test
-.env.test.local
+# Env files — managed exclusively via the Vercel dashboard, never uploaded.
+# Ignore every .env variant, then keep only the committed template.
+.env*
+!.env.example
 
 # Editor / tooling
 .claude/
