@@ -1,0 +1,109 @@
+import "server-only";
+import { cookies, headers } from "next/headers";
+import { redirect } from "next/navigation";
+import { cache } from "react";
+import { db } from "@/lib/db";
+import { env } from "@/lib/env";
+import { UnauthorizedError } from "@/lib/errors";
+import { loadAuthContext, type AuthContext } from "./context";
+import { generateToken, hashToken } from "./tokens";
+
+export const SESSION_COOKIE = "ef_session";
+
+export async function createSession(params: {
+  userId: string;
+  organizationId: string;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+}): Promise<{ token: string; expiresAt: Date }> {
+  const token = generateToken();
+  const expiresAt = new Date(Date.now() + env().SESSION_TTL_HOURS * 3_600_000);
+  await db.session.create({
+    data: {
+      tokenHash: hashToken(token),
+      userId: params.userId,
+      organizationId: params.organizationId,
+      expiresAt,
+      ipAddress: params.ipAddress ?? null,
+      userAgent: params.userAgent?.slice(0, 300) ?? null,
+    },
+  });
+  return { token, expiresAt };
+}
+
+export async function setSessionCookie(token: string, expiresAt: Date) {
+  const store = await cookies();
+  store.set(SESSION_COOKIE, token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    expires: expiresAt,
+  });
+}
+
+export async function clearSessionCookie() {
+  const store = await cookies();
+  store.delete(SESSION_COOKIE);
+}
+
+/** Résout une session à partir du jeton en clair (cookie). */
+export async function resolveSessionToken(token: string): Promise<AuthContext | null> {
+  const session = await db.session.findUnique({
+    where: { tokenHash: hashToken(token) },
+    select: { id: true, userId: true, organizationId: true, expiresAt: true, lastSeenAt: true },
+  });
+  if (!session) return null;
+  if (session.expiresAt.getTime() <= Date.now()) {
+    await db.session.delete({ where: { id: session.id } }).catch(() => undefined);
+    return null;
+  }
+  try {
+    const ctx = await loadAuthContext(session.userId, session.organizationId, session.id);
+    // Mise à jour de l'activité au plus toutes les 5 minutes
+    if (Date.now() - session.lastSeenAt.getTime() > 5 * 60_000) {
+      await db.session.update({ where: { id: session.id }, data: { lastSeenAt: new Date() } }).catch(() => undefined);
+    }
+    return ctx;
+  } catch (error) {
+    if (error instanceof UnauthorizedError) return null;
+    throw error;
+  }
+}
+
+async function clientIp(): Promise<string | null> {
+  const h = await headers();
+  return h.get("x-forwarded-for")?.split(",")[0]?.trim() || h.get("x-real-ip") || null;
+}
+
+/** Contexte de la requête courante (mis en cache pour la durée du rendu). */
+export const getAuthContext = cache(async (): Promise<AuthContext | null> => {
+  const store = await cookies();
+  const token = store.get(SESSION_COOKIE)?.value;
+  if (!token) return null;
+  const ctx = await resolveSessionToken(token);
+  if (ctx) ctx.ipAddress = await clientIp();
+  return ctx;
+});
+
+/** Pour les routes API : lève 401 si non authentifié. */
+export async function requireAuth(): Promise<AuthContext> {
+  const ctx = await getAuthContext();
+  if (!ctx) throw new UnauthorizedError();
+  return ctx;
+}
+
+/** Pour les pages : redirige vers la connexion si non authentifié. */
+export async function requirePageAuth(): Promise<AuthContext> {
+  const ctx = await getAuthContext();
+  if (!ctx) redirect("/login");
+  return ctx;
+}
+
+export async function revokeSession(sessionId: string) {
+  await db.session.delete({ where: { id: sessionId } }).catch(() => undefined);
+}
+
+export async function revokeAllUserSessions(userId: string) {
+  await db.session.deleteMany({ where: { userId } });
+}

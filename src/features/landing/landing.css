@@ -1,0 +1,218 @@
+/*
+ * Page d'accueil publique : « le plateau ».
+ * Palette des gélatines d'éclairage sur velours de salle ; lettrage pochoir des flight-cases
+ * pour les titres, chasse fixe pour les timecodes et les mécanismes.
+ */
+.lp {
+  --lp-velvet: #0e0b1a;
+  --lp-deck: #17131f;
+  --lp-panel: rgb(20 16 32 / 0.72);
+  --lp-chalk: #f3eff9;
+  --lp-dim: #a69fbd;
+  --lp-line: rgb(243 239 249 / 0.12);
+  --lp-amber: #ffb347;
+  --lp-magenta: #ff3d8b;
+  --lp-lavender: #9c8cff;
+  --lp-stencil: "Big Shoulders Stencil Display Variable", "Inter Variable", sans-serif;
+  --lp-mono: "JetBrains Mono Variable", ui-monospace, monospace;
+  background: var(--lp-velvet);
+  color: var(--lp-chalk);
+  overflow-x: clip;
+}
+
+.lp ::selection {
+  background: var(--lp-amber);
+  color: var(--lp-velvet);
+}
+
+.lp-stencil {
+  font-family: var(--lp-stencil);
+  text-transform: uppercase;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  line-height: 0.86;
+}
+
+.lp-mono {
+  font-family: var(--lp-mono);
+  font-feature-settings: "zero" 1;
+  letter-spacing: 0.02em;
+}
+
+.lp-eyebrow {
+  font-family: var(--lp-mono);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--lp-dim);
+}
+
+.lp a:focus-visible,
+.lp button:focus-visible {
+  outline: 2px solid var(--lp-amber);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+/* Boutons */
+.lp-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  height: 3rem;
+  padding: 0 1.4rem;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  transition: transform 160ms ease, background-color 160ms ease, box-shadow 160ms ease, color 160ms ease;
+}
+.lp-btn-primary {
+  background: var(--lp-amber);
+  color: #1b1206;
+  box-shadow: 0 0 0 1px rgb(255 179 71 / 0.4), 0 10px 40px -10px rgb(255 179 71 / 0.7);
+}
+.lp-btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 0 0 1px rgb(255 179 71 / 0.6), 0 14px 50px -8px rgb(255 179 71 / 0.85);
+}
+.lp-btn-ghost {
+  color: var(--lp-chalk);
+  box-shadow: inset 0 0 0 1px var(--lp-line);
+  background: rgb(14 11 26 / 0.4);
+  backdrop-filter: blur(8px);
+}
+.lp-btn-ghost:hover {
+  box-shadow: inset 0 0 0 1px rgb(243 239 249 / 0.35);
+}
+
+/* Séquence d'ouverture du titre */
+.lp-rise {
+  display: block;
+  animation: lp-rise 1.1s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(var(--i, 0) * 140ms + 250ms);
+}
+@keyframes lp-rise {
+  from {
+    opacity: 0;
+    transform: translateY(0.35em);
+    clip-path: inset(-25% 0 100% 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    clip-path: inset(-25% 0 -10% 0);
+  }
+}
+.lp-fade {
+  animation: lp-fade 1.2s ease both;
+  animation-delay: calc(var(--i, 0) * 120ms + 700ms);
+}
+@keyframes lp-fade {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Titre éclairé : un reflet de projecteur traverse le pochoir */
+.lp-lit {
+  background: linear-gradient(100deg, var(--lp-chalk) 0%, var(--lp-chalk) 40%, #fff6e6 48%, var(--lp-amber) 52%, var(--lp-chalk) 60%, var(--lp-chalk) 100%);
+  background-size: 260% 100%;
+  /* Marge haute : les accents (É) dépassent la ligne et doivent rester peints */
+  padding-top: 0.16em;
+  margin-top: -0.16em;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: lp-sweep 7s ease-in-out 1.6s infinite;
+}
+@keyframes lp-sweep {
+  0%,
+  20% {
+    background-position: 100% 0;
+  }
+  60%,
+  100% {
+    background-position: 0% 0;
+  }
+}
+
+/* Cues de la conduite */
+.lp-cue {
+  transition: opacity 400ms ease, transform 400ms ease, box-shadow 400ms ease, border-color 400ms ease;
+  opacity: 0.42;
+  border-color: var(--lp-line);
+}
+.lp-cue[data-active="true"] {
+  opacity: 1;
+  border-color: color-mix(in oklab, var(--cue-color) 70%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--cue-color) 35%, transparent), 0 30px 80px -30px color-mix(in oklab, var(--cue-color) 60%, transparent);
+}
+.lp-cue[data-active="true"] .lp-cue-day {
+  color: var(--cue-color);
+}
+
+/* Apparition au défilement (uniquement si le script est actif) */
+@media (scripting: enabled) and (prefers-reduced-motion: no-preference) {
+  .lp-reveal {
+    opacity: 0;
+    transform: translateY(28px);
+    transition: opacity 900ms ease, transform 900ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    transition-delay: calc(var(--i, 0) * 90ms);
+  }
+  .lp-reveal.is-in {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Cadre de capture incliné au pointeur */
+.lp-tilt {
+  transform: perspective(1400px) rotateX(var(--rx, 6deg)) rotateY(var(--ry, -8deg));
+  transition: transform 500ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  transform-style: preserve-3d;
+}
+
+/* Faisceaux de repli (sans WebGL) */
+.lp-fallback-beam {
+  position: absolute;
+  top: -10%;
+  width: 26vw;
+  height: 120%;
+  transform-origin: 50% 0;
+  background: linear-gradient(to bottom, color-mix(in oklab, var(--beam) 70%, transparent), transparent 75%);
+  clip-path: polygon(46% 0, 54% 0, 100% 100%, 0 100%);
+  mix-blend-mode: screen;
+  filter: blur(6px);
+  opacity: 0.55;
+  animation: lp-swing 9s ease-in-out infinite alternate;
+  animation-delay: var(--d, 0s);
+}
+@keyframes lp-swing {
+  from {
+    rotate: -14deg;
+  }
+  to {
+    rotate: 14deg;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lp-rise,
+  .lp-fade,
+  .lp-lit,
+  .lp-fallback-beam {
+    animation: none;
+  }
+  .lp-lit {
+    background-position: 0 0;
+  }
+  .lp-tilt,
+  .lp-cue {
+    transition: none;
+  }
+}

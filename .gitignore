@@ -1,0 +1,31 @@
+# dependencies
+node_modules/
+
+# next.js
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+
+# env — never commit real secrets
+.env
+.env.local
+.env.*.local
+.env.test.local
+
+# local storage (uploaded files, dev mail outbox, backups)
+# NB: ancré à la racine pour ne pas ignorer le code source src/server/storage/
+/storage/
+backups/
+
+# tests
+coverage/
+playwright-report/
+test-results/
+blob-report/
+
+# misc
+.DS_Store
+*.log
+npm-debug.log*
+.superpowers/

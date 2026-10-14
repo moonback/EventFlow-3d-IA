@@ -1,0 +1,45 @@
+# Services locaux de développement. Ne pas utiliser tel quel en production.
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: eventflow
+      POSTGRES_PASSWORD: eventflow
+      POSTGRES_DB: eventflow_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./scripts/docker-init-test-db.sql:/docker-entrypoint-initdb.d/10-test-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eventflow -d eventflow_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Boîte mail locale (SMTP sur 1025, interface web sur http://localhost:8025)
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+  # Stockage S3 compatible local (console http://localhost:9001)
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: eventflow
+      MINIO_ROOT_PASSWORD: eventflow-dev-only
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - miniodata:/data
+    profiles: ["s3"]
+
+volumes:
+  pgdata:
+  miniodata:

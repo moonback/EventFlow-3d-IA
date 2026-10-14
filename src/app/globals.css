@@ -1,0 +1,153 @@
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-border: var(--sidebar-border);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+/* Thème clair (optionnel) */
+:root {
+  --radius: 0.65rem;
+  --background: oklch(0.985 0.002 260);
+  --foreground: oklch(0.2 0.02 265);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.2 0.02 265);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.2 0.02 265);
+  --primary: oklch(0.55 0.2 275);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.955 0.005 265);
+  --secondary-foreground: oklch(0.25 0.02 265);
+  --muted: oklch(0.955 0.005 265);
+  --muted-foreground: oklch(0.5 0.02 265);
+  --accent: oklch(0.94 0.012 275);
+  --accent-foreground: oklch(0.25 0.03 275);
+  --destructive: oklch(0.58 0.22 27);
+  --success: oklch(0.6 0.15 155);
+  --warning: oklch(0.72 0.16 70);
+  --info: oklch(0.6 0.14 235);
+  --border: oklch(0.91 0.006 265);
+  --input: oklch(0.89 0.008 265);
+  --ring: oklch(0.55 0.2 275);
+  --sidebar: oklch(0.975 0.004 265);
+  --sidebar-foreground: oklch(0.3 0.02 265);
+  --sidebar-accent: oklch(0.93 0.01 270);
+  --sidebar-border: oklch(0.91 0.006 265);
+}
+
+/* Thème sombre par défaut : bleu nuit profond, accents indigo / violet */
+.dark {
+  --background: oklch(0.165 0.03 262);
+  --foreground: oklch(0.96 0.008 260);
+  --card: oklch(0.205 0.038 262);
+  --card-foreground: oklch(0.96 0.008 260);
+  --popover: oklch(0.215 0.04 262);
+  --popover-foreground: oklch(0.96 0.008 260);
+  --primary: oklch(0.56 0.24 275);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.26 0.04 262);
+  --secondary-foreground: oklch(0.94 0.008 260);
+  --muted: oklch(0.25 0.035 262);
+  --muted-foreground: oklch(0.72 0.03 262);
+  --accent: oklch(0.28 0.06 268);
+  --accent-foreground: oklch(0.97 0.01 270);
+  --destructive: oklch(0.64 0.22 25);
+  --success: oklch(0.74 0.17 155);
+  --warning: oklch(0.8 0.16 75);
+  --info: oklch(0.72 0.14 240);
+  --border: oklch(0.3 0.04 262);
+  --input: oklch(0.32 0.04 262);
+  --ring: oklch(0.6 0.22 275);
+  --sidebar: oklch(0.175 0.035 262);
+  --sidebar-foreground: oklch(0.86 0.02 262);
+  --sidebar-accent: oklch(0.42 0.17 262);
+  --sidebar-border: oklch(0.27 0.04 262);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv11", "ss01";
+  }
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-ring;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer utilities {
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+  .scrollbar-thin {
+    scrollbar-width: thin;
+  }
+  /* Panneau flottant translucide (surcouches de la vue 3D) */
+  .glass {
+    background: color-mix(in oklab, var(--card) 82%, transparent);
+    border: 1px solid color-mix(in oklab, var(--border) 85%, transparent);
+    backdrop-filter: blur(14px) saturate(140%);
+    box-shadow: 0 10px 30px -12px rgb(0 0 0 / 0.55);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-fade-in {
+  animation: fade-in 0.18s ease-out both;
+}
