@@ -5,6 +5,7 @@ import { paths } from "./config";
 export interface MenuActions {
   window(): BrowserWindow | null;
   goHome(): void;
+  goWelcome(): void;
   reload(): void;
   showServerSetup(): void;
   checkForUpdates(): void;
@@ -24,6 +25,7 @@ export function buildMenu(actions: MenuActions) {
     {
       label: "&Fichier",
       submenu: [
+        { label: "Page d'accueil", click: () => actions.goWelcome() },
         { label: "Tableau de bord", accelerator: "CmdOrCtrl+Shift+H", click: () => actions.goHome() },
         { type: "separator" },
         { label: "Configurer le serveur…", click: () => actions.showServerSetup() },
