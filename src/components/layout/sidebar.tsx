@@ -1,5 +1,6 @@
 "use client";
-import { Boxes, Menu, X } from "lucide-react";
+import { Menu, X } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -45,8 +46,8 @@ function NavLinks({ permissions, onNavigate }: { permissions: string[]; onNaviga
 function Brand() {
   return (
     <Link href="/dashboard" className="flex items-center gap-3 px-3" aria-label="EventFlow — accueil">
-      <span className="relative flex size-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 text-white shadow-lg shadow-indigo-900/40">
-        <Boxes className="size-5" aria-hidden />
+      <span className="relative flex size-10 items-center justify-center overflow-hidden rounded-xl  shadow-lg shadow-indigo-900/40">
+        <Image src="/Images/logo.png" alt="" width={40} height={40} className="size-full object-contain" priority />
       </span>
       <span className="flex flex-col leading-tight">
         <span className="text-xl font-semibold tracking-tight">

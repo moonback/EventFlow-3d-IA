@@ -1,10 +1,56 @@
 "use client";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import * as THREE from "three";
 import { useAmbience } from "../materials/ambience";
 
 const noRaycast = () => null;
 const FONT = "Inter Variable, Inter, system-ui, sans-serif";
+const LOGO_SRC = "/Images/logo.png";
+
+/**
+ * Logo de l'agence chargé une seule fois pour toute la scène. `logoImage` est l'image prête à être
+ * dessinée sur les textures canvas ; `subscribe` prévient les hooks pour régénérer leurs textures.
+ */
+let logoImage: HTMLImageElement | null = null;
+let logoPending: Promise<HTMLImageElement | null> | null = null;
+const logoListeners = new Set<() => void>();
+
+function loadLogo() {
+  if (logoImage || logoPending) return logoPending ?? Promise.resolve(logoImage);
+  logoPending = new Promise<HTMLImageElement | null>((resolve) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      logoImage = img;
+      resolve(img);
+      logoListeners.forEach((fn) => fn());
+    };
+    img.onerror = () => resolve(null);
+    img.src = LOGO_SRC;
+  });
+  return logoPending;
+}
+
+/** Dessine le logo de l'agence inscrit dans un disque de rayon `r`, ou à défaut le monogramme texte. */
+function brandMark(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, color: string, initials: string) {
+  if (logoImage) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.closePath();
+    ctx.clip();
+    ctx.fillStyle = color;
+    ctx.fill();
+    const { width: iw, height: ih } = logoImage;
+    const scale = Math.min((r * 2) / iw, (r * 2) / ih);
+    const dw = iw * scale;
+    const dh = ih * scale;
+    ctx.drawImage(logoImage, x - dw / 2, y - dh / 2, dw, dh);
+    ctx.restore();
+    return;
+  }
+  monogram(ctx, x, y, r, color, initials);
+}
 
 /** Nom affiché (sans mention entre parenthèses) et monogramme de l'organisation. */
 export function brandIdentity(name: string) {
@@ -34,8 +80,12 @@ function monogram(ctx: CanvasRenderingContext2D, x: number, y: number, r: number
 
 type BrandKind = "livery" | "sign" | "floor";
 
-/** Texture d'habillage générée à partir du nom et de la couleur d'accent de l'organisation. */
-function makeBrandTexture(name: string, color: string, kind: BrandKind) {
+/**
+ * Texture d'habillage générée à partir du nom et de la couleur d'accent de l'organisation.
+ * `logoReady` ne sert qu'à forcer la régénération quand le logo vient d'être chargé (lu via `logoImage`).
+ */
+function makeBrandTexture(name: string, color: string, kind: BrandKind, _logoReady: boolean) {
+  void _logoReady;
   const { display, initials } = brandIdentity(name);
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d")!;
@@ -46,7 +96,7 @@ function makeBrandTexture(name: string, color: string, kind: BrandKind) {
     ctx.beginPath();
     ctx.arc(256, 256, 236, 0, Math.PI * 2);
     ctx.stroke();
-    monogram(ctx, 256, 220, 120, color, initials);
+    brandMark(ctx, 256, 220, 120, color, initials);
     ctx.fillStyle = "#ffffff";
     ctx.font = `700 34px ${FONT}`;
     ctx.textAlign = "center";
@@ -58,7 +108,7 @@ function makeBrandTexture(name: string, color: string, kind: BrandKind) {
     ctx.fillRect(0, 0, 1024, 160);
     ctx.fillStyle = color;
     ctx.fillRect(0, 0, 14, 160);
-    monogram(ctx, 100, 80, 56, color, initials);
+    brandMark(ctx, 100, 80, 56, color, initials);
     ctx.fillStyle = "#ffffff";
     ctx.font = `700 64px ${FONT}`;
     ctx.textBaseline = "middle";
@@ -84,7 +134,7 @@ function makeBrandTexture(name: string, color: string, kind: BrandKind) {
     ctx.closePath();
     ctx.fill();
     ctx.globalAlpha = 1;
-    monogram(ctx, 110, 100, 72, color, initials);
+    brandMark(ctx, 110, 100, 72, color, initials);
     ctx.fillStyle = "#0f172a";
     ctx.font = `800 70px ${FONT}`;
     ctx.textBaseline = "middle";
@@ -100,7 +150,17 @@ function useBrandTexture(kind: BrandKind) {
   const site = useAmbience()?.site;
   const name = site?.name ?? "EventFlow";
   const color = site?.accentColor ?? "#6366f1";
-  const result = useMemo(() => makeBrandTexture(name, color, kind), [name, color, kind]);
+  // Régénère la texture une fois le logo chargé (le dessin canvas est synchrone, l'image ne l'est pas).
+  const [logoReady, setLogoReady] = useState(() => logoImage !== null);
+  useEffect(() => {
+    if (logoReady) return;
+    const notify = () => setLogoReady(true);
+    logoListeners.add(notify);
+    void loadLogo();
+    return () => void logoListeners.delete(notify);
+  }, [logoReady]);
+  // `logoReady` participe au recalcul : il bascule quand le logo est chargé, ce qui redessine la texture.
+  const result = useMemo(() => makeBrandTexture(name, color, kind, logoReady), [name, color, kind, logoReady]);
   useEffect(() => () => result.texture.dispose(), [result]);
   return result;
 }

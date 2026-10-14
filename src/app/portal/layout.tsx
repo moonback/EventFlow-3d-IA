@@ -1,4 +1,4 @@
-import { Boxes } from "lucide-react";
+import Image from "next/image";
 import type { ReactNode } from "react";
 
 /** Mise en page du portail prestataire : publique, sans navigation vers l'espace de travail. */
@@ -8,8 +8,8 @@ export default function PortalLayout({ children }: { children: ReactNode }) {
       <div aria-hidden className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,var(--color-primary)_0%,transparent_55%)] opacity-10" />
       <div className="relative mx-auto w-full max-w-3xl">
         <div className="mb-6 flex items-center gap-3">
-          <span className="flex size-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-fuchsia-500 text-white shadow-lg shadow-primary/30">
-            <Boxes className="size-5" aria-hidden />
+          <span className="flex size-10 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-primary to-fuchsia-500 shadow-lg shadow-primary/30">
+            <Image src="/Images/logo.png" alt="" width={40} height={40} className="size-full object-contain" priority />
           </span>
           <div>
             <p className="font-semibold tracking-tight">
