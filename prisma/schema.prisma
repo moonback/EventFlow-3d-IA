@@ -32,37 +32,43 @@ enum Role {
 }
 
 model Organization {
-  id                       String   @id @default(cuid())
-  name                     String
-  slug                     String   @unique
-  legalName                String?
-  siret                    String?
-  vatNumber                String?
-  email                    String?
-  phone                    String?
-  addressLine1             String?
-  addressLine2             String?
-  postalCode               String?
-  city                     String?
-  country                  String   @default("FR")
-  timezone                 String   @default("Europe/Paris")
-  currency                 String   @default("EUR")
-  defaultVatRate           Decimal  @default(20) @db.Decimal(5, 2)
-  paymentTermDays          Int      @default(30)
+  id                         String   @id @default(cuid())
+  name                       String
+  slug                       String   @unique
+  legalName                  String?
+  siret                      String?
+  vatNumber                  String?
+  email                      String?
+  phone                      String?
+  addressLine1               String?
+  addressLine2               String?
+  postalCode                 String?
+  city                       String?
+  country                    String   @default("FR")
+  timezone                   String   @default("Europe/Paris")
+  currency                   String   @default("EUR")
+  defaultVatRate             Decimal  @default(20) @db.Decimal(5, 2)
+  paymentTermDays            Int      @default(30)
   // Délais logistiques par défaut (heures) utilisés par le calcul de disponibilité
-  prepBufferHours          Int      @default(24)
-  returnBufferHours        Int      @default(24)
-  quoteValidityDays        Int      @default(30)
+  prepBufferHours            Int      @default(24)
+  returnBufferHours          Int      @default(24)
+  quoteValidityDays          Int      @default(30)
   // Mentions légales configurables imprimées sur les documents commerciaux
-  quoteFooter              String?
-  invoiceFooter            String?
-  latePenaltyText          String?
-  accentColor              String   @default("#6366f1")
+  quoteFooter                String?
+  invoiceFooter              String?
+  latePenaltyText            String?
+  accentColor                String   @default("#6366f1")
   /// Formulaire public de demande de devis (/demande/[slug]) : fermé tant que l'organisation ne l'ouvre pas
-  publicRequestFormEnabled Boolean  @default(false)
-  isDemo                   Boolean  @default(false)
-  createdAt                DateTime @default(now())
-  updatedAt                DateTime @updatedAt
+  publicRequestFormEnabled   Boolean  @default(false)
+  /// Assistant vocal Eric : activable par l'organisation (effectif seulement si ASSISTANT_ENABLED côté serveur)
+  assistantEnabled           Boolean  @default(true)
+  /// Voix prédéfinie Gemini Live (null : voix par défaut du serveur, GEMINI_LIVE_VOICE)
+  assistantVoice             String?
+  /// Durée maximale d'une conversation en minutes (null : valeur du serveur ; plafonnée par ASSISTANT_MAX_SESSION_MINUTES)
+  assistantMaxSessionMinutes Int?
+  isDemo                     Boolean  @default(false)
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
 
   memberships         Membership[]
   invitations         Invitation[]

@@ -2,11 +2,12 @@ import "server-only";
 import type { Role } from "@prisma/client";
 import type { z } from "zod";
 import { db } from "@/lib/db";
+import { env } from "@/lib/env";
 import { BusinessRuleError, ValidationError } from "@/lib/errors";
 import { DEFAULT_ROLE_PERMISSIONS, isPermission, PERMISSIONS } from "@/lib/permissions";
 import { paginated, paginationArgs, type ListQuery } from "@/lib/pagination";
 import { decimalString } from "@/lib/serialize";
-import type { organizationSettingsSchema } from "@/features/settings/schemas";
+import type { assistantSettingsSchema, organizationSettingsSchema } from "@/features/settings/schemas";
 import { audit } from "../audit";
 import { assertCan, type AuthContext } from "../auth/context";
 
@@ -26,6 +27,36 @@ export async function updateOrganizationSettings(ctx: AuthContext, data: z.outpu
   assertCan(ctx, "settings:manage");
   await db.organization.update({ where: { id: ctx.organizationId }, data });
   await audit(ctx, "settings.updated", "Organization", ctx.organizationId, { fields: Object.keys(data) });
+}
+
+/**
+ * Réglages de l'assistant vocal Eric. `serverEnabled` : la passerelle est activée côté serveur
+ * (ASSISTANT_ENABLED) — sans elle, le réglage de l'organisation est conservé mais sans effet.
+ */
+export async function getAssistantSettings(ctx: AuthContext) {
+  assertCan(ctx, "settings:manage");
+  const o = await db.organization.findUniqueOrThrow({
+    where: { id: ctx.organizationId },
+    select: { assistantEnabled: true, assistantVoice: true, assistantMaxSessionMinutes: true },
+  });
+  const e = env();
+  return {
+    enabled: o.assistantEnabled,
+    voice: o.assistantVoice,
+    maxSessionMinutes: o.assistantMaxSessionMinutes,
+    serverEnabled: e.ASSISTANT_ENABLED === "true",
+    serverMaxSessionMinutes: e.ASSISTANT_MAX_SESSION_MINUTES,
+  };
+}
+
+export async function updateAssistantSettings(ctx: AuthContext, data: z.output<typeof assistantSettingsSchema>) {
+  assertCan(ctx, "settings:manage");
+  await db.organization.update({
+    where: { id: ctx.organizationId },
+    data: { assistantEnabled: data.enabled, assistantVoice: data.voice, assistantMaxSessionMinutes: data.maxSessionMinutes },
+  });
+  await audit(ctx, "settings.assistant_updated", "Organization", ctx.organizationId, { enabled: data.enabled, voice: data.voice, maxSessionMinutes: data.maxSessionMinutes });
+  return getAssistantSettings(ctx);
 }
 
 export async function getPermissionMatrix(ctx: AuthContext) {

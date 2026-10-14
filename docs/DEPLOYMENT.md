@@ -71,6 +71,11 @@ Gemini Live avec les identifiants Google Cloud du serveur (jamais transmis au na
    « Vertex AI User » attaché à l'hôte (ou `GOOGLE_APPLICATION_CREDENTIALS` vers un fichier monté
    hors du dépôt). Vérifier avec `npm run assistant:check` (un échange de quelques secondes).
 2. Lancer la passerelle comme un second service (même image, même variables d'environnement).
+   `ASSISTANT_ENABLED` indique seulement que la passerelle est installée : chaque organisation
+   active ou désactive ensuite Eric dans **Paramètres → Organisation → Assistant vocal Eric**
+   (activé par défaut), et y choisit la voix et la durée maximale d'une conversation (plafonnée
+   par `ASSISTANT_MAX_SESSION_MINUTES`). Ces réglages nécessitent la migration
+   `20261014170000_assistant_settings` (`npm run db:deploy`).
 3. Proxy inverse : router `/ws/assistant` vers la passerelle **sur la même origine** que
    l'application, avec l'upgrade WebSocket et des délais longs, par exemple avec Nginx :
 

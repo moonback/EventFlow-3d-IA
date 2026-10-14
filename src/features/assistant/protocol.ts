@@ -57,7 +57,7 @@ export type ServerMessage =
 
 export type ConfirmOutcome = "done" | "cancelled" | "expired" | "withdrawn" | "failed";
 
-export type AssistantErrorCode = "LIVE_UNAVAILABLE" | "BAD_MESSAGE" | "SESSION_EXPIRED" | "IDLE_TIMEOUT" | "MAX_DURATION" | "REPLACED";
+export type AssistantErrorCode = "LIVE_UNAVAILABLE" | "BAD_MESSAGE" | "SESSION_EXPIRED" | "IDLE_TIMEOUT" | "MAX_DURATION" | "REPLACED" | "DISABLED";
 
 /** Codes de fermeture WebSocket applicatifs (plage 4000–4999) */
 export const CLOSE_CODES = {
@@ -66,6 +66,8 @@ export const CLOSE_CODES = {
   IDLE_TIMEOUT: 4002,
   MAX_DURATION: 4003,
   SESSION_EXPIRED: 4401,
+  /** Assistant désactivé par l'organisation pendant la conversation */
+  DISABLED: 4403,
   LIVE_UNAVAILABLE: 4502,
 } as const;
 

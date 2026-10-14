@@ -129,8 +129,10 @@ test.describe("Application de bureau — serveur local embarqué", () => {
     await page.evaluate(() => (window.location.href = "eventflow-app://pages/setup.html"));
     await page.waitForTimeout(1000);
     expect(page.url()).toBe(before);
-    const frames = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.webContents.mainFrame.framesInSubtree.map((f) => f.url));
-    expect(frames.some((u) => u.startsWith("eventflow-app:"))).toBe(false);
+    // Le cadre garde l'URL demandée, mais rien n'y est chargé (CSP de la page + frame-ancestors 'none') :
+    // on vérifie l'origine réellement chargée, pas l'URL demandée
+    const origins = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.webContents.mainFrame.framesInSubtree.map((f) => f.origin));
+    expect(origins.some((o) => o.startsWith("eventflow-app:"))).toBe(false);
     await page.goto(`${LOCAL_ORIGIN}/login`);
   });
 
@@ -217,6 +219,34 @@ test.describe("Application de bureau — serveur local embarqué", () => {
     });
     expect(prefs).toEqual({ sandbox: true, contextIsolation: true, nodeIntegration: false });
     await popup.close();
+  });
+
+  test("paramètres : l'assistant Eric se configure et se désactive depuis la page Organisation", async () => {
+    const { page } = ctx;
+    const { DESKTOP_SHOTS } = process.env;
+    await page.goto(`${LOCAL_ORIGIN}/settings/organization`);
+    const card = page.locator("#assistant");
+    await expect(card.getByText("Assistant vocal Eric", { exact: true })).toBeVisible();
+    // Serveur local : passerelle vocale non embarquée → avertissement explicite
+    await expect(card.getByText("La passerelle vocale n'est pas activée sur le serveur")).toBeVisible();
+    const toggle = card.getByRole("switch", { name: "Activer l'assistant vocal Eric" });
+    await expect(toggle).toBeChecked();
+    await card.getByLabel("Voix").selectOption("Kore");
+    await card.getByLabel("Durée maximale d'une conversation (minutes)").fill("15");
+    await card.getByRole("button", { name: "Enregistrer les réglages d'Eric" }).click();
+    await expect(page.getByText("Réglages d'Eric enregistrés")).toBeVisible();
+    await toggle.click();
+    await expect(page.getByText("Assistant Eric désactivé")).toBeVisible();
+    await expect(toggle).not.toBeChecked();
+    if (DESKTOP_SHOTS) await card.screenshot({ path: `${DESKTOP_SHOTS}/shot-assistant-settings.png` });
+    const saved = await page.evaluate(async () => (await (await fetch("/api/settings/assistant")).json()).data);
+    expect(saved).toMatchObject({ enabled: false, voice: "Kore", maxSessionMinutes: 15, serverEnabled: false });
+    // Après rechargement, la page reflète l'état enregistré
+    await page.reload();
+    await expect(page.locator("#assistant").getByRole("switch", { name: "Activer l'assistant vocal Eric" })).not.toBeChecked();
+    await expect(page.locator("#assistant").getByLabel("Voix")).toHaveValue("Kore");
+    await page.locator("#assistant").getByRole("switch", { name: "Activer l'assistant vocal Eric" }).click();
+    await expect(page.getByText("Assistant Eric activé")).toBeVisible();
   });
 
   test("déconnexion : session invalidée côté serveur", async () => {
