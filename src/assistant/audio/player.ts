@@ -1,23 +1,26 @@
 import { SPEAKER_SAMPLE_RATE } from "@/features/assistant/protocol";
 import { pcm16BytesToFloat } from "./pcm";
 
-/** Avance de planification : absorbe la gigue réseau sans retarder perceptiblement la voix */
-const LEAD_SECONDS = 0.05;
-
 /**
- * Lecture de la voix d'Eric (PCM 16 bits 24 kHz) : les fragments sont planifiés bout à bout pour
- * éviter les « clics », `flush()` coupe net (l'utilisateur a pris la parole) et `level()` fournit
- * l'amplitude courante pour animer l'avatar.
+ * Lecture de la voix d'Eric (PCM 16 bits 24 kHz) via un AudioWorklet (`voice-worklet.js`) : la file
+ * est consommée sur le thread audio avec tampon anti-gigue et fondus à chaque arrêt/reprise, ce qui
+ * supprime les « bips » des sous-remplissages. `flush()` coupe (en fondu très court) quand
+ * l'utilisateur prend la parole et `level()` fournit l'amplitude courante pour animer l'avatar.
  */
 export class VoicePlayer {
-  private readonly ctx: AudioContext;
+  // Contexte à 24 kHz : pas de rééchantillonnage côté page, le navigateur adapte à la sortie
+  private readonly ctx = new AudioContext({ sampleRate: SPEAKER_SAMPLE_RATE });
   private readonly analyser: AnalyserNode;
   private readonly samples: Float32Array<ArrayBuffer>;
-  private readonly sources = new Set<AudioBufferSourceNode>();
-  private nextTime = 0;
+  private node: AudioWorkletNode | null = null;
+  private ready: Promise<void> | null = null;
+  /** Fragments reçus avant le chargement du worklet */
+  private pending: Float32Array[] = [];
+  /** Octet orphelin d'un fragment de longueur impaire, recollé au suivant */
+  private carry: number | null = null;
+  private playing = false;
 
   constructor() {
-    this.ctx = new AudioContext();
     this.analyser = this.ctx.createAnalyser();
     this.analyser.fftSize = 512;
     this.analyser.connect(this.ctx.destination);
@@ -26,41 +29,54 @@ export class VoicePlayer {
 
   /** À appeler depuis un geste utilisateur (politique d'autoplay des navigateurs). */
   async resume() {
-    if (this.ctx.state === "suspended") await this.ctx.resume();
+    const resumed = this.ctx.state === "suspended" ? this.ctx.resume() : Promise.resolve();
+    this.ready ??= this.ctx.audioWorklet.addModule("/assistant/voice-worklet.js").then(() => {
+      if (this.ctx.state === "closed") return;
+      const node = new AudioWorkletNode(this.ctx, "voice-playback", { numberOfInputs: 0, outputChannelCount: [1] });
+      node.port.onmessage = (e: MessageEvent<boolean>) => {
+        this.playing = e.data;
+      };
+      node.connect(this.analyser);
+      this.node = node;
+      for (const data of this.pending) this.post(data);
+      this.pending = [];
+    });
+    await Promise.all([resumed, this.ready]);
   }
 
   enqueue(bytes: ArrayBuffer) {
-    const data = pcm16BytesToFloat(bytes);
-    if (data.length === 0) return;
-    const buffer = this.ctx.createBuffer(1, data.length, SPEAKER_SAMPLE_RATE);
-    buffer.copyToChannel(data, 0);
-    const source = this.ctx.createBufferSource();
-    source.buffer = buffer;
-    source.connect(this.analyser);
-    const startAt = Math.max(this.nextTime, this.ctx.currentTime + LEAD_SECONDS);
-    source.start(startAt);
-    this.nextTime = startAt + buffer.duration;
-    this.sources.add(source);
-    source.onended = () => this.sources.delete(source);
-  }
-
-  /** Coupe immédiatement toute la voix en file d'attente. */
-  flush() {
-    for (const source of this.sources) {
-      source.onended = null;
-      try {
-        source.stop();
-      } catch {
-        // déjà arrêtée
-      }
+    let input = new Uint8Array(bytes);
+    if (this.carry !== null) {
+      const joined = new Uint8Array(input.length + 1);
+      joined[0] = this.carry;
+      joined.set(input, 1);
+      input = joined;
+      this.carry = null;
     }
-    this.sources.clear();
-    this.nextTime = 0;
+    if (input.length % 2 === 1) {
+      this.carry = input[input.length - 1]!;
+      input = input.subarray(0, input.length - 1);
+    }
+    const data = pcm16BytesToFloat(input.slice().buffer);
+    if (data.length === 0) return;
+    if (this.node) this.post(data);
+    else this.pending.push(data);
   }
 
-  /** Eric est-il en train de parler (audio en cours ou planifié) ? */
+  private post(data: Float32Array) {
+    this.node?.port.postMessage(data, [data.buffer]);
+  }
+
+  /** Coupe la voix en file d'attente (fondu de quelques millisecondes pour éviter le clic). */
+  flush() {
+    this.pending = [];
+    this.carry = null;
+    this.node?.port.postMessage("flush");
+  }
+
+  /** Eric est-il en train de parler (audio en cours de lecture) ? */
   get speaking() {
-    return this.sources.size > 0 && this.ctx.currentTime < this.nextTime;
+    return this.playing;
   }
 
   /** Amplitude RMS 0..1 de la voix en cours de lecture. */
@@ -73,6 +89,7 @@ export class VoicePlayer {
 
   close() {
     this.flush();
+    this.node?.disconnect();
     void this.ctx.close();
   }
 }
