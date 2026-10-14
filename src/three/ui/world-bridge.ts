@@ -102,7 +102,7 @@ export function createWorldBridge(deps: WorldBridgeDeps): WorldBridge {
         const r = resolve(String(args.target));
         if ("error" in r) return fail(r.error, r.error === "AMBIGUOUS" ? "Plusieurs objets correspondent : précise lequel" : "Aucun objet de la scène ne correspond", r.suggestions);
         deps.select(r.item.key);
-        if (s.mode === "3d") deps.moveEric(spotNear(r.item));
+        deps.moveEric(spotNear(r.item)); // avatar 3D ou pastille du plan 2D
         return { ok: true, shown: summary(r.item), metrics: r.item.metrics?.slice(0, 6), alerts: r.item.alerts?.slice(0, 4) };
       }
       case "go_to_zone": {

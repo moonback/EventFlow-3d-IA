@@ -3,12 +3,50 @@ import { ZONES } from "@/features/scene/layout";
 import type { SceneData } from "@/features/scene/types";
 import { STATUS_COLORS } from "../materials/palette";
 import { eventCountdown } from "../objects/event-pod";
+import type { EricProps } from "../objects/eric";
+import { ERIC_MOOD_COLORS, ERIC_MOOD_LABELS, ericMood } from "../objects/eric-mood";
 
 /**
  * Plan 2D (vue de dessus) des mêmes objets que la 3D : mode plan ET mode de secours sans WebGL.
  * Chaque objet est un bouton accessible au clavier, identifié par son type et son identifiant métier.
  */
-export function Plan2D({ data, selectedKey, highlighted, onSelect }: { data: SceneData; selectedKey: string | null; highlighted: Set<string>; onSelect: (key: string) => void }) {
+/** Eric dans le plan : même position et même état que son avatar 3D (types seuls : pas de Three.js ici). */
+type EricMarkerProps = Pick<EricProps, "spot" | "status" | "thinking" | "onClick">;
+
+function EricMarker({ spot, status, thinking, onClick }: EricMarkerProps) {
+  const mood = ericMood(status, thinking);
+  const color = ERIC_MOOD_COLORS[mood];
+  const active = mood !== "idle";
+  const [x, z] = spot.position;
+  return (
+    <g
+      role="button"
+      tabIndex={0}
+      aria-label={`Eric, régisseur virtuel${active ? ` — ${ERIC_MOOD_LABELS[mood]}` : ""}. Ouvrir ou fermer la conversation`}
+      onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick?.();
+        }
+      }}
+      // Déplacement animé quand Eric rejoint ce qu'il montre (coupé si l'utilisateur réduit les animations)
+      style={{ transform: `translate(${x}px, ${z}px)` }}
+      className="cursor-pointer outline-none transition-transform duration-700 ease-out motion-reduce:transition-none focus-visible:[&>circle:nth-child(2)]:stroke-white"
+    >
+      <circle r={2.6} fill={color} fillOpacity={0.18} className={active ? "animate-pulse motion-reduce:animate-none" : undefined} />
+      <circle r={1.5} fill="#1e293b" stroke={color} strokeWidth={0.35} />
+      <text y={0.55} textAnchor="middle" fill="#f8fafc" fontSize={1.5} fontWeight={700} pointerEvents="none">
+        E
+      </text>
+      <text y={3.9} textAnchor="middle" fill={color} fontSize={1.1} fontWeight={600} pointerEvents="none">
+        Eric · {ERIC_MOOD_LABELS[mood]}
+      </text>
+    </g>
+  );
+}
+
+export function Plan2D({ data, selectedKey, highlighted, onSelect, eric = null }: { data: SceneData; selectedKey: string | null; highlighted: Set<string>; onSelect: (key: string) => void; eric?: EricMarkerProps | null }) {
   const minX = -54;
   const maxX = 56;
   const minZ = -36;
@@ -66,6 +104,7 @@ export function Plan2D({ data, selectedKey, highlighted, onSelect }: { data: Sce
           </g>
         );
       })}
+      {eric ? <EricMarker {...eric} /> : null}
     </svg>
   );
 }

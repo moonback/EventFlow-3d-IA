@@ -565,7 +565,7 @@ export function WorldShell({ canEditLayout, canCount, canDuplicate, assistant = 
                 </Alert>
               ) : null}
               <div className="min-h-0 flex-1 p-3">
-                <Plan2D data={planView ?? data} selectedKey={selectedKey} highlighted={highlighted} onSelect={(k) => select(k)} />
+                <Plan2D data={planView ?? data} selectedKey={selectedKey} highlighted={highlighted} onSelect={(k) => select(k)} eric={ericInScene} />
               </div>
             </div>
           )}

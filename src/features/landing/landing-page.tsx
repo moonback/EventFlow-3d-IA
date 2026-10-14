@@ -1,7 +1,7 @@
 import "@fontsource-variable/big-shoulders-stencil-display";
 import "@fontsource-variable/jetbrains-mono";
 import "./landing.css";
-import { ArrowDown, ArrowRight, Boxes } from "lucide-react";
+import { ArrowDown, ArrowRight, Boxes, Crosshair, Database, Mic, MousePointerClick, ShieldCheck } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import type { CSSProperties } from "react";
@@ -11,6 +11,7 @@ import { CueConsole, CueHud, CueObserver, RevealObserver, StageBackdrop, TiltFra
 const NAV = [
   { href: "#conduite", label: "La conduite" },
   { href: "#plateau", label: "Le monde 3D" },
+  { href: "#eric", label: "Eric" },
   { href: "#modules", label: "Modules" },
   { href: "#garanties", label: "Garanties" },
   { href: "#demarrer", label: "Démarrer" },
@@ -53,6 +54,7 @@ const MODULE_GROUPS: { title: string; items: { name: string; text: string }[] }[
       { name: "Finances", text: "Marge prévue et réelle par événement, coûts d'équipe et de transport compris." },
       { name: "Rapports", text: "Indicateurs par période, exports CSV." },
       { name: "Documents", text: "Contrats, plans, fiches techniques rattachés au bon dossier." },
+      { name: "Assistant vocal", text: "Eric répond à la voix sur vos données, montre la réponse en 3D et propose des actions à confirmer." },
     ],
   },
 ];
@@ -74,6 +76,14 @@ const ROLES = [
   { role: "Comptabilité", sees: "Factures, paiements, dépenses" },
   { role: "Technicien · Chauffeur · Équipe", sees: "Leurs missions et leur planning" },
   { role: "Prestataires", sees: "Un portail par lien, sans compte" },
+];
+
+/** Ce que fait Eric, l'assistant vocal (voir la section « Eric, à l'intercom ») */
+const ERIC_SKILLS = [
+  { icon: Mic, title: "Il vous écoute", text: "Conversation vocale en temps réel, en français. Coupez-lui la parole ou écrivez-lui : il suit." },
+  { icon: Database, title: "Il connaît le dossier", text: "Événements, stock, véhicules, équipe, devis, factures, finances : il consulte vos données, jamais sa mémoire." },
+  { icon: Crosshair, title: "Il montre", text: "Il cadre le camion, le rayonnage ou l'événement dont il parle, et va se placer à côté pour le désigner." },
+  { icon: MousePointerClick, title: "Vous décidez", text: "Il peut changer un statut, ajouter une note, créer une tâche ou déplacer du matériel. Rien ne bouge sans votre clic." },
 ];
 
 const SHOTS = [
@@ -132,7 +142,7 @@ export function LandingPage({ signedIn }: { signedIn: boolean }) {
               <div className="mt-8 flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
                 <p className="lp-fade max-w-xl text-lg leading-relaxed text-[var(--lp-chalk)]/85 sm:text-xl" style={{ "--i": 2 } as CSSProperties}>
                   Matériel, équipes, véhicules, devis et factures dans une seule application. Et votre agence entière en 3D, pour voir où en est chaque
-                  événement d&apos;un coup d&apos;œil.
+                  événement d&apos;un coup d&apos;œil — avec Eric, un régisseur virtuel à qui poser vos questions à voix haute.
                 </p>
                 <div className="lp-fade flex flex-wrap gap-3" style={{ "--i": 3 } as CSSProperties}>
                   <Link href={cta.href} className="lp-btn lp-btn-primary">
@@ -236,6 +246,73 @@ export function LandingPage({ signedIn }: { signedIn: boolean }) {
                 </li>
               ))}
             </ul>
+          </div>
+        </section>
+
+        {/* ── Eric, l'assistant vocal ───────────────────────────── */}
+        <section id="eric" aria-labelledby="eric-title" className="relative z-10 border-t border-[var(--lp-line)] bg-[var(--lp-deck)] px-4 py-28 sm:px-8">
+          <div className="mx-auto grid max-w-[1400px] gap-14 lg:grid-cols-[minmax(0,1fr)_minmax(0,520px)] lg:items-center">
+            <div className="lp-reveal">
+              <p className="lp-eyebrow">Assistant vocal · Gemini Live</p>
+              <h2 id="eric-title" className="lp-stencil mt-4 text-[clamp(3rem,7vw,5.5rem)]">
+                Eric, à l&apos;intercom
+              </h2>
+              <p className="mt-6 max-w-xl leading-relaxed text-[var(--lp-dim)]">
+                Eric est le régisseur virtuel de votre agence. Casque sur les oreilles, il se tient dans le monde 3D : posez-lui une question à voix
+                haute, il consulte vos données, vous répond en quelques secondes et montre la réponse sur le plateau.
+              </p>
+              <ul className="mt-10 grid gap-x-8 gap-y-7 sm:grid-cols-2">
+                {ERIC_SKILLS.map((skill, i) => (
+                  <li key={skill.title} className="lp-reveal" style={{ "--i": i } as CSSProperties}>
+                    <span className="flex size-10 items-center justify-center rounded-xl border border-[var(--lp-line)] bg-[var(--lp-panel)] text-[var(--lp-amber)]">
+                      <skill.icon className="size-5" aria-hidden />
+                    </span>
+                    <h3 className="mt-4 text-lg font-semibold tracking-tight">{skill.title}</h3>
+                    <p className="mt-1.5 text-sm leading-relaxed text-[var(--lp-dim)]">{skill.text}</p>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-10 flex max-w-xl gap-3 border-t border-[var(--lp-line)] pt-5 text-sm leading-relaxed text-[var(--lp-dim)]">
+                <ShieldCheck className="mt-0.5 size-4 shrink-0 text-[var(--lp-amber)]" aria-hidden />
+                <span>
+                  Eric ne voit que ce que votre rôle vous permet de voir, et chaque modification qu&apos;il propose attend votre confirmation. Votre voix
+                  est traitée par Google Gemini.
+                </span>
+              </p>
+            </div>
+
+            {/* Conversation d'exemple (illustration, données de démonstration) */}
+            <figure className="lp-reveal rounded-2xl border border-[var(--lp-line)] bg-[var(--lp-panel)] p-5 shadow-[0_40px_120px_-40px_rgb(56_189_248/0.45)] backdrop-blur-md sm:p-6">
+              <figcaption className="flex items-center gap-2.5 border-b border-[var(--lp-line)] pb-4">
+                <span aria-hidden className="relative flex size-2.5">
+                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-[#22c55e] opacity-60 motion-reduce:animate-none" />
+                  <span className="relative inline-flex size-2.5 rounded-full bg-[#22c55e]" />
+                </span>
+                <span className="font-semibold">Eric</span>
+                <span className="lp-mono ml-auto text-[0.7rem] uppercase tracking-[0.16em] text-[var(--lp-dim)]">Exemple de conversation</span>
+              </figcaption>
+              <div className="mt-5 flex flex-col gap-3 text-sm leading-relaxed">
+                <p className="max-w-[85%] self-end rounded-2xl rounded-br-md bg-[var(--lp-lavender)] px-4 py-2.5 text-[#140f24]">
+                  <span className="sr-only">Vous : </span>Où sont rangées les lyres spot ?
+                </p>
+                <p className="lp-mono self-start text-[0.7rem] uppercase tracking-wider text-[var(--lp-amber)]">Eric consulte le stock…</p>
+                <p className="max-w-[85%] self-start rounded-2xl rounded-bl-md border border-[var(--lp-line)] bg-[var(--lp-velvet)] px-4 py-2.5">
+                  <span className="sr-only">Eric : </span>Douze lyres spot : quatre en A-03, cinq au retour, deux en sortie et une en A-01. Je vous montre
+                  l&apos;allée A.
+                </p>
+                <p className="max-w-[85%] self-end rounded-2xl rounded-br-md bg-[var(--lp-lavender)] px-4 py-2.5 text-[#140f24]">
+                  <span className="sr-only">Vous : </span>Passe le lancement Nova X en prêt à partir.
+                </p>
+                <div className="self-start rounded-xl border border-[var(--lp-amber)]/50 bg-[var(--lp-amber)]/10 p-3.5">
+                  <p className="font-semibold">Eric propose : changer le statut de l&apos;événement</p>
+                  <p className="mt-1 text-[var(--lp-dim)]">Lancement Nova X · Confirmé → Prêt à partir</p>
+                  <p aria-hidden className="mt-3 flex gap-2">
+                    <span className="rounded-lg bg-[var(--lp-amber)] px-3 py-1.5 text-xs font-semibold text-[#1b1206]">Confirmer</span>
+                    <span className="rounded-lg border border-[var(--lp-line)] px-3 py-1.5 text-xs">Refuser</span>
+                  </p>
+                </div>
+              </div>
+            </figure>
           </div>
         </section>
 
@@ -349,7 +426,7 @@ export function LandingPage({ signedIn }: { signedIn: boolean }) {
               Lever de rideau
             </h2>
             <p className="mx-auto mt-6 max-w-lg text-lg leading-relaxed text-[var(--lp-dim)]">
-              Le matériel est-il chargé, l&apos;équipe confirmée, le devis signé ? Ouvrez EventFlow, la réponse est sur le plateau.
+              Le matériel est-il chargé, l&apos;équipe confirmée, le devis signé ? Ouvrez EventFlow ou demandez à Eric : la réponse est sur le plateau.
             </p>
             <div className="mt-10 flex justify-center">
               <Link href={cta.href} className="lp-btn lp-btn-primary">

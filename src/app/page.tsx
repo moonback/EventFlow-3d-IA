@@ -4,7 +4,7 @@ import { LandingPage } from "@/features/landing/landing-page";
 
 export const metadata: Metadata = {
   title: { absolute: "EventFlow 3D — ERP et CRM pour agences événementielles" },
-  description: "Matériel, équipes, véhicules, devis et factures dans une seule application, et votre agence entière en 3D.",
+  description: "Matériel, équipes, véhicules, devis et factures dans une seule application, votre agence entière en 3D et Eric, un assistant vocal qui répond sur vos données.",
   robots: { index: true, follow: true },
 };
 
