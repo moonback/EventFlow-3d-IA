@@ -59,6 +59,8 @@ export interface DesktopApi {
   openExternal(url: string): Promise<ActionResult>;
   /** Notification native (affichée uniquement si la fenêtre n'a pas le focus). */
   notify(payload: NotifyPayload): Promise<ActionResult>;
+  /** URL WebSocket de la passerelle vocale Eric en mode serveur local, ou null si indisponible. */
+  assistantWsUrl(): Promise<string | null>;
   /** Pages internes uniquement. */
   internal: {
     getStatus(): Promise<StartupStatus>;
@@ -75,6 +77,7 @@ export const IPC = {
   appInfo: "eventflow:app-info",
   openExternal: "eventflow:open-external",
   notify: "eventflow:notify",
+  assistantWsUrl: "eventflow:assistant-ws-url",
   status: "eventflow:internal:status",
   retry: "eventflow:internal:retry",
   saveServerUrl: "eventflow:internal:save-server-url",

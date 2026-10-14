@@ -3,6 +3,7 @@ import type { Role } from "@prisma/client";
 import type { z } from "zod";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
+import { decryptSecret, encryptSecret, secretsEncryptionReady } from "../crypto/secret-box";
 import { BusinessRuleError, ValidationError } from "@/lib/errors";
 import { DEFAULT_ROLE_PERMISSIONS, isPermission, PERMISSIONS } from "@/lib/permissions";
 import { paginated, paginationArgs, type ListQuery } from "@/lib/pagination";
@@ -37,15 +38,24 @@ export async function getAssistantSettings(ctx: AuthContext) {
   assertCan(ctx, "settings:manage");
   const o = await db.organization.findUniqueOrThrow({
     where: { id: ctx.organizationId },
-    select: { assistantEnabled: true, assistantVoice: true, assistantMaxSessionMinutes: true },
+    select: { assistantEnabled: true, assistantVoice: true, assistantMaxSessionMinutes: true, assistantApiKeyEncrypted: true },
   });
   const e = env();
+  const apiKey = o.assistantApiKeyEncrypted ? decryptSecret(o.assistantApiKeyEncrypted) : null;
   return {
     enabled: o.assistantEnabled,
     voice: o.assistantVoice,
     maxSessionMinutes: o.assistantMaxSessionMinutes,
     serverEnabled: e.ASSISTANT_ENABLED === "true",
     serverMaxSessionMinutes: e.ASSISTANT_MAX_SESSION_MINUTES,
+    /** Clé de l'organisation : seulement sa présence et ses 4 derniers caractères, jamais la valeur */
+    apiKeyConfigured: Boolean(o.assistantApiKeyEncrypted),
+    apiKeyHint: apiKey ? apiKey.slice(-4) : null,
+    /** Clé enregistrée mais illisible (APP_ENCRYPTION_KEY changée ou absente) : à ressaisir */
+    apiKeyUnreadable: Boolean(o.assistantApiKeyEncrypted) && apiKey === null,
+    encryptionReady: secretsEncryptionReady(),
+    /** Identifiants Gemini fournis par le serveur (utilisés si l'organisation n'a pas de clé) */
+    serverCredentials: e.GEMINI_BACKEND === "developer" ? Boolean(e.GEMINI_API_KEY) : Boolean(e.GOOGLE_CLOUD_PROJECT),
   };
 }
 
@@ -53,9 +63,16 @@ export async function updateAssistantSettings(ctx: AuthContext, data: z.output<t
   assertCan(ctx, "settings:manage");
   await db.organization.update({
     where: { id: ctx.organizationId },
-    data: { assistantEnabled: data.enabled, assistantVoice: data.voice, assistantMaxSessionMinutes: data.maxSessionMinutes },
+    data: {
+      assistantEnabled: data.enabled,
+      assistantVoice: data.voice,
+      assistantMaxSessionMinutes: data.maxSessionMinutes,
+      ...(data.apiKey === undefined ? {} : { assistantApiKeyEncrypted: data.apiKey === null ? null : encryptSecret(data.apiKey) }),
+    },
   });
-  await audit(ctx, "settings.assistant_updated", "Organization", ctx.organizationId, { enabled: data.enabled, voice: data.voice, maxSessionMinutes: data.maxSessionMinutes });
+  // Audit : jamais la clé, seulement l'opération effectuée
+  const apiKey = data.apiKey === undefined ? "unchanged" : data.apiKey === null ? "removed" : "set";
+  await audit(ctx, "settings.assistant_updated", "Organization", ctx.organizationId, { enabled: data.enabled, voice: data.voice, maxSessionMinutes: data.maxSessionMinutes, apiKey });
   return getAssistantSettings(ctx);
 }
 

@@ -74,5 +74,17 @@ export const assistantSettingsSchema = z.object({
   voice: z.enum(ASSISTANT_VOICES.map((v) => v.value) as [string, ...string[]]).nullable(),
   /** null : durée maximale du serveur */
   maxSessionMinutes: z.number().int().min(1).max(240).nullable(),
+  /**
+   * Clé API Gemini (Google AI Studio) : absente = inchangée, null = supprimée, chaîne = remplacée.
+   * Jamais renvoyée au navigateur une fois enregistrée.
+   */
+  apiKey: z
+    .string()
+    .trim()
+    .min(20, "Clé API trop courte")
+    .max(200, "Clé API trop longue")
+    .regex(/^[A-Za-z0-9_-]+$/, "Clé API invalide : lettres, chiffres, « - » et « _ » uniquement")
+    .nullable()
+    .optional(),
 });
 export type AssistantSettingsInput = z.input<typeof assistantSettingsSchema>;

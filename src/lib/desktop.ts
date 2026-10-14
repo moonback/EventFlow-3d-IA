@@ -5,6 +5,19 @@
 interface DesktopBridge {
   isDesktop: true;
   notify(payload: { title: string; body?: string; link?: string }): Promise<{ ok: boolean; error?: string }>;
+  /** URL WebSocket de la passerelle vocale Eric (mode serveur local), ou null si indisponible. */
+  assistantWsUrl?(): Promise<string | null>;
+}
+
+/** URL de la passerelle vocale fournie par l'application de bureau, ou null (navigateur, ou mode distant). */
+export async function desktopAssistantWsUrl(): Promise<string | null> {
+  const bridge = desktopBridge();
+  if (!bridge?.assistantWsUrl) return null;
+  try {
+    return await bridge.assistantWsUrl();
+  } catch {
+    return null;
+  }
 }
 
 export function desktopBridge(): DesktopBridge | null {

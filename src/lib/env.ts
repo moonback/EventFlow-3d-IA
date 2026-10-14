@@ -7,6 +7,8 @@ const envSchema = z.object({
   APP_URL: z.string().url().default("http://localhost:3000"),
   SESSION_TTL_HOURS: z.coerce.number().int().min(1).max(24 * 30).default(12),
   CRON_SECRET: z.string().optional(),
+  // Clé maîtresse (32 octets en base64) chiffrant les secrets stockés en base, ex. la clé API Gemini d'une organisation
+  APP_ENCRYPTION_KEY: z.string().optional(),
   MAIL_DRIVER: z.enum(["file", "smtp", "disabled"]).default("file"),
   MAIL_FROM: z.string().default("EventFlow 3D <no-reply@example.com>"),
   SMTP_HOST: z.string().optional(),

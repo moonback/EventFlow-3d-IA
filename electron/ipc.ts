@@ -19,6 +19,8 @@ export interface IpcContext {
   useLocalServer(): ActionResult;
   /** Navigue la fenêtre principale vers un chemin interne validé. */
   openInApp(path: string): void;
+  /** URL WebSocket de la passerelle vocale Eric (mode local), ou null si indisponible. */
+  assistantWsUrl(): string | null;
   icon(): string;
 }
 
@@ -46,6 +48,8 @@ export function registerIpc(ctx: IpcContext) {
   handle<AppInfo>(ctx, IPC.appInfo, "app", () => ({ name: app.getName(), version: app.getVersion(), platform: process.platform, mode: ctx.mode(), packaged: app.isPackaged }));
 
   handle<ActionResult>(ctx, IPC.openExternal, "app", async (_e, url) => ((await openExternalSafely(url)) ? { ok: true } : { ok: false, error: "URL non autorisée" }));
+
+  handle<string | null>(ctx, IPC.assistantWsUrl, "app", () => ctx.assistantWsUrl());
 
   handle<ActionResult>(ctx, IPC.notify, "app", (event, payload) => {
     const valid = validateNotifyPayload(payload);

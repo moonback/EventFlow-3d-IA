@@ -214,8 +214,21 @@ SMTP_PASSWORD="..."
   inaccessible » ; arrêt du serveur → page d'erreur avec le chemin des journaux.
 - **Aucune migration n'est lancée automatiquement.** Préparer la base une fois depuis le dépôt :
   `npm run db:deploy` puis `npm run org:create` (voir `docs/DEPLOYMENT.md`).
-- `MAIL_DRIVER="file"` n'est pas pris en charge (remplacé par `disabled`) ; l'assistant vocal
-  est désactivé (il nécessite la passerelle WebSocket, voir § 15).
+- `MAIL_DRIVER="file"` n'est pas pris en charge (remplacé par `disabled`).
+- Assistant vocal Eric : la passerelle WebSocket embarquée (`assistant-gateway.js`) démarre par
+  défaut (`ASSISTANT_ENABLED="false"` dans `server.env` pour s'en passer). **Le plus simple** :
+  saisir la clé API Gemini dans *Paramètres → Organisation → Assistant vocal Eric* ; elle est
+  chiffrée en base avec une clé maîtresse générée par l'application et protégée par Windows
+  (`encryption-key.bin`, DPAPI). Une clé API seule dans `server.env` (sans `GEMINI_BACKEND`) passe
+  aussi par la Gemini API. La passerelle démarre dans un second
+  `utilityProcess` sur `127.0.0.1:<port du serveur + 1>` (journal `logs/assistant.log`). Le port
+  doit être libre (sinon l'assistant reste indisponible). La CSP du serveur étant figée au build
+  (`connect-src 'self'`), le processus principal y ajoute l'origine exacte de la passerelle,
+  uniquement pour les documents de l'origine de confiance.
+  - `GEMINI_BACKEND="developer"` + `GEMINI_API_KEY` : clé Gemini API (essais) ;
+  - `GEMINI_BACKEND="enterprise"` (défaut) + `GOOGLE_CLOUD_PROJECT` : identifiants Google Cloud
+    du poste (`gcloud auth application-default login`). Si les deux sont définis, le mode
+    enterprise l'emporte (message « project/location will take precedence over the API key »).
 - `NODE_OPTIONS`, `NODE_PATH` et `ELECTRON_*` sont ignorées dans `server.env`.
 
 ## 10. Variables d'environnement
@@ -253,7 +266,7 @@ Le mécanisme existant est utilisé sans modification :
 
 - `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true` (et `app.enableSandbox()`),
   `webSecurity: true`, `webviewTag: false`, aucun contenu non sûr mélangé.
-- Preload : API figée (`Object.freeze`) de 3 méthodes applicatives + 6 méthodes réservées aux
+- Preload : API figée (`Object.freeze`) de 4 méthodes applicatives + 6 méthodes réservées aux
   pages internes ; jamais `ipcRenderer`. Le processus principal vérifie pour chaque appel que
   l'expéditeur est le **cadre principal** de l'origine de confiance (ou d'une page interne) et
   valide les arguments.
@@ -323,8 +336,7 @@ Le mécanisme existant est utilisé sans modification :
 - **Pas de mode hors connexion** : EventFlow a besoin de son serveur. En mode distant, une
   connexion réseau est indispensable ; en mode local, PostgreSQL doit être joignable. Aucune
   donnée n'est mise en cache pour un usage déconnecté.
-- Mode local : l'assistant vocal Eric est désactivé (la passerelle WebSocket
-  `scripts/assistant-gateway.ts` n'est pas embarquée) ; e-mails uniquement via SMTP ; une seule
+- Mode local : e-mails uniquement via SMTP ; une seule
   instance de serveur par poste ; les migrations sont à appliquer manuellement.
 - Les mises à jour automatiques ne sont pas validées faute de source de publication réelle.
 - L'installateur généré n'est pas signé.

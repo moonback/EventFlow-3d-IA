@@ -8,7 +8,8 @@ import { createServer } from "node:net";
 import path from "node:path";
 import { DEFAULT_LOCAL_PORT, paths } from "./config";
 import { log, rotate } from "./logger";
-import { buildLocalServerEnv, classifyHealth, localServerOrigin, parseEnvFile } from "./policy";
+import { localEncryptionKey } from "./secrets";
+import { buildLocalServerEnv, classifyHealth, localServerOrigin, parseEnvFile, type AssistantConfig } from "./policy";
 
 export class StartupError extends Error {
   constructor(
@@ -88,6 +89,8 @@ export async function waitForHealth(origin: string, opts: { timeoutMs: number; i
 
 export interface LocalServerHandle {
   origin: string;
+  /** URL WebSocket de la passerelle vocale si l'assistant est actif, sinon null (exposée au renderer). */
+  readonly assistantWsUrl: string | null;
   stop(): Promise<void>;
   readonly alive: boolean;
 }
@@ -110,7 +113,7 @@ export async function startLocalServer(opts: { preferredPort?: number; onExit?: 
 
   const port = await choosePort(opts.preferredPort);
   fs.mkdirSync(paths.serverData(), { recursive: true });
-  const built = buildLocalServerEnv(userEnv, { port, dataDir: paths.serverData(), systemEnv: process.env });
+  const built = buildLocalServerEnv(userEnv, { port, dataDir: paths.serverData(), systemEnv: process.env, encryptionKey: localEncryptionKey() });
   if (built.error || !built.env) throw new StartupError("Configuration du serveur local incomplète", built.error ?? "Configuration invalide", `Fichier : ${envFile}`);
   for (const w of built.warnings) log.warn(`[server] ${w}`);
 
@@ -145,12 +148,20 @@ export async function startLocalServer(opts: { preferredPort?: number; onExit?: 
     opts.onExit?.(code);
   });
 
+  // Passerelle vocale : démarrée après le serveur, arrêtée avec lui (cycle de vie commun).
+  const assistant: AssistantConfig | null = built.assistant ?? null;
+  let gateway: AssistantGatewayHandle | null = null;
+
   const handle: LocalServerHandle = {
     origin: localServerOrigin(port),
+    get assistantWsUrl() {
+      return gateway?.alive ? (assistant?.wsUrl ?? null) : null;
+    },
     get alive() {
       return alive;
     },
     async stop() {
+      await gateway?.stop();
       if (!alive) return;
       child.kill();
       // Le processus utilitaire est terminé par le système ; attente bornée de l'événement de sortie
@@ -164,6 +175,76 @@ export async function startLocalServer(opts: { preferredPort?: number; onExit?: 
     await handle.stop();
     throw error;
   }
+  // L'assistant est optionnel : son échec ne compromet pas le serveur ni le démarrage de l'application.
+  // Port de la passerelle déterministe (serveur + 1) : refusé s'il est déjà pris, pour qu'aucun autre
+  // processus ne reçoive la voix ni le cookie de session envoyés à localhost.
+  if (assistant) {
+    if (await isPortFree(assistant.port)) gateway = startAssistantGateway({ env: assistant.env });
+    else log.warn(`[assistant] port ${assistant.port} déjà utilisé : assistant vocal indisponible`);
+  }
   log.info(`Serveur local prêt sur ${handle.origin}`);
   return handle;
+}
+
+export interface AssistantGatewayHandle {
+  stop(): Promise<void>;
+  readonly alive: boolean;
+}
+
+/**
+ * Démarre la passerelle WebSocket de l'assistant vocal Eric dans un `utilityProcess` séparé (le
+ * serveur Next.js embarqué ne gère pas l'upgrade WebSocket). Le bundle `assistant-gateway.js` est
+ * produit à côté de `server.js` dans desktop-server ; en cas d'absence (assistant non embarqué) ou
+ * d'erreur, l'assistant reste simplement indisponible — jamais de blocage du démarrage.
+ */
+export function startAssistantGateway(opts: { env: Record<string, string>; onExit?: (code: number) => void }): AssistantGatewayHandle | null {
+  const serverDir = paths.server();
+  const entry = path.join(serverDir, "assistant-gateway.js");
+  if (!fs.existsSync(entry)) {
+    log.warn(`[assistant] passerelle introuvable (${entry}) : assistant vocal indisponible`);
+    return null;
+  }
+
+  const logFile = path.join(paths.logs(), "assistant.log");
+  rotate(logFile);
+  const out = fs.createWriteStream(logFile, { flags: "a" });
+  out.write(`\n[${new Date().toISOString()}] Démarrage de la passerelle vocale sur 127.0.0.1:${opts.env.ASSISTANT_GATEWAY_PORT ?? "?"}\n`);
+
+  const child: UtilityProcess = utilityProcess.fork(entry, [], {
+    cwd: serverDir,
+    env: opts.env,
+    stdio: "pipe",
+    serviceName: "EventFlow Assistant",
+  });
+  let alive = true;
+  let exitResolve: (() => void) | null = null;
+  const exited = new Promise<void>((r) => (exitResolve = r));
+  child.stdout?.on("data", (d: Buffer) => {
+    out.write(d);
+    if (!process.env.EVENTFLOW_QUIET) process.stdout.write(`[assistant] ${d}`);
+  });
+  child.stderr?.on("data", (d: Buffer) => {
+    out.write(d);
+    process.stderr.write(`[assistant] ${d}`);
+  });
+  child.on("exit", (code) => {
+    alive = false;
+    out.write(`[${new Date().toISOString()}] Arrêt de la passerelle vocale (code ${code})\n`);
+    out.end();
+    log.info(`Passerelle vocale arrêtée (code ${code})`);
+    exitResolve?.();
+    opts.onExit?.(code);
+  });
+
+  log.info(`Passerelle vocale démarrée (port ${opts.env.ASSISTANT_GATEWAY_PORT ?? "?"})`);
+  return {
+    get alive() {
+      return alive;
+    },
+    async stop() {
+      if (!alive) return;
+      child.kill();
+      await Promise.race([exited, new Promise((r) => setTimeout(r, 5000))]);
+    },
+  };
 }

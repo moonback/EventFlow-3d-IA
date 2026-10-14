@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ASSISTANT_WS_PATH, CLOSE_CODES, MAX_WORLD_RESULT_CHARS, type ClientMessage, type ConfirmOutcome, type ServerMessage } from "@/features/assistant/protocol";
 import { findWorldTool, type WorldResult } from "@/features/assistant/world-tools";
+import { desktopAssistantWsUrl } from "@/lib/desktop";
 import { startMicrophone, type Microphone } from "./audio/microphone";
 import { VoicePlayer } from "./audio/player";
 
@@ -28,8 +29,15 @@ export interface TranscriptLine {
   text: string;
 }
 
-/** URL de la passerelle : variable publique en développement (port distinct), sinon même origine. */
-export function assistantSocketUrl() {
+/**
+ * URL de la passerelle vocale :
+ * 1. application de bureau (Electron) : la passerelle écoute un port local propre, communiqué par le pont ;
+ * 2. développement web : variable publique `NEXT_PUBLIC_ASSISTANT_WS_URL` (port distinct de Next) ;
+ * 3. production web : même origine que l'application (le proxy inverse route /ws/assistant).
+ */
+export async function assistantSocketUrl() {
+  const fromDesktop = await desktopAssistantWsUrl();
+  if (fromDesktop) return fromDesktop;
   const configured = process.env.NEXT_PUBLIC_ASSISTANT_WS_URL;
   if (configured) return configured;
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -198,7 +206,7 @@ export function useAssistant(bridge?: WorldBridge, onDataChanged?: () => void) {
     const voice = new VoicePlayer();
     player.current = voice;
     await voice.resume();
-    const ws = new WebSocket(assistantSocketUrl());
+    const ws = new WebSocket(await assistantSocketUrl());
     ws.binaryType = "arraybuffer";
     socket.current = ws;
     let opened = false;

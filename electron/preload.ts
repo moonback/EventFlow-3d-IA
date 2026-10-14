@@ -12,6 +12,7 @@ const api: DesktopApi = {
   openExternal: (url: string) => ipcRenderer.invoke(IPC.openExternal, String(url)),
   notify: (payload: NotifyPayload) =>
     ipcRenderer.invoke(IPC.notify, { title: String(payload?.title ?? ""), body: payload?.body === undefined ? undefined : String(payload.body), link: payload?.link === undefined ? undefined : String(payload.link) }),
+  assistantWsUrl: () => ipcRenderer.invoke(IPC.assistantWsUrl),
   internal: {
     getStatus: () => ipcRenderer.invoke(IPC.status),
     retry: () => ipcRenderer.invoke(IPC.retry),

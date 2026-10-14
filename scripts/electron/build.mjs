@@ -49,6 +49,32 @@ async function buildElectron() {
   fs.writeFileSync(path.join(outDir, "defaults.json"), JSON.stringify(defaults, null, 2));
 }
 
+/**
+ * Bundle la passerelle vocale Eric en un fichier CommonJS autonome, posé à côté de server.js.
+ * - `@/` est résolu vers src/ (alias du tsconfig) ;
+ * - `server-only` est neutralisé (son index.js lève une erreur hors runtime Next) ;
+ * - les modules natifs/déjà tracés par Next (Prisma, argon2, nodemailer, S3, pdfkit) restent externes
+ *   et sont fournis par le node_modules du serveur standalone ; `ws` et `@google/genai`, absents de ce
+ *   tracing (utilisés seulement par la passerelle), sont bundlés, en externalisant leurs addons natifs optionnels.
+ */
+async function buildAssistantGateway() {
+  step("Compilation de la passerelle vocale (assistant-gateway.js)");
+  const common = { bundle: true, sourcemap: false, logLevel: "warning", legalComments: "none", define: { "process.env.NODE_ENV": '"production"' } };
+  await build({
+    ...common,
+    entryPoints: [path.join(root, "scripts/assistant-gateway.ts")],
+    outfile: path.join(serverOut, "assistant-gateway.js"),
+    platform: "node",
+    format: "cjs",
+    target: "node22",
+    alias: { "server-only": path.join(root, "node_modules", "server-only", "empty.js") },
+    // Externes : uniquement les modules présents dans le node_modules du serveur standalone (Prisma et son
+    // moteur natif, argon2 natif, S3 et pdfkit tracés par Next). Les modules absents de ce tracing car
+    // utilisés seulement par la passerelle (ws, @google/genai, nodemailer) sont bundlés dans le fichier.
+    external: ["@prisma/client", ".prisma/client", "@node-rs/argon2", "@aws-sdk/client-s3", "pdfkit", "bufferutil", "utf-8-validate"],
+  });
+}
+
 /** Exécute un script Node.js avec l'interpréteur courant (pas de shell : arguments non interprétés). */
 function runNode(script, args, env) {
   const res = spawnSync(process.execPath, [script, ...args], { cwd: root, stdio: "inherit", env });
@@ -102,11 +128,23 @@ function assembleServer() {
   // Ressources non copiées par Next : fichiers statiques compilés et dossier public (modèles .glb, images)
   copyDir(path.join(root, distDir, "static"), path.join(serverOut, distDir, "static"));
   copyDir(path.join(root, "public"), path.join(serverOut, "public"));
+  // Cache d'exécution éventuellement présent dans la sortie standalone : jamais embarqué
+  fs.rmSync(path.join(serverOut, distDir, "cache"), { recursive: true, force: true });
   const removed = removeSensitiveFiles(serverOut);
   if (removed.length) console.log(`  Exclus du paquet : ${removed.join(", ")}`);
 
   for (const required of ["server.js", path.join(distDir, "BUILD_ID"), path.join("public", "models", "truck.glb"), path.join("node_modules", ".prisma", "client")]) {
     if (!fs.existsSync(path.join(serverOut, required))) throw new Error(`Ressource manquante dans le serveur embarqué : ${required}`);
+  }
+}
+
+/** Vérifie que le bundle de la passerelle et ses modules externes natifs sont présents dans le serveur embarqué. */
+function verifyAssistantRuntime() {
+  if (!fs.existsSync(path.join(serverOut, "assistant-gateway.js"))) throw new Error("Ressource manquante dans le serveur embarqué : assistant-gateway.js");
+  // @prisma/client est laissé externe (moteur natif) : il doit être présent, tracé par Next depuis les
+  // services. Les autres dépendances de la passerelle (ws, @google/genai, nodemailer) sont bundlées.
+  for (const required of [path.join("node_modules", "@prisma", "client"), path.join("node_modules", ".prisma", "client")]) {
+    if (!fs.existsSync(path.join(serverOut, required))) throw new Error(`Module requis par la passerelle absent du serveur embarqué : ${required} (vérifier le tracing standalone de Next)`);
   }
 }
 
@@ -122,5 +160,7 @@ if (!electronOnly) {
   ensureIcon();
   buildNext();
   assembleServer();
+  await buildAssistantGateway();
+  verifyAssistantRuntime();
 }
 console.log("\n✔ Build de bureau terminé");

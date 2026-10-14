@@ -9,7 +9,7 @@ import { installDownloads } from "./downloads";
 import { registerIpc } from "./ipc";
 import { initLogger, log } from "./logger";
 import { buildMenu } from "./menu";
-import { INTERNAL_ORIGIN, INTERNAL_SCHEME, isTrustedUrl, normalizeServerUrl, sanitizeInAppPath } from "./policy";
+import { extendConnectSrc, INTERNAL_ORIGIN, INTERNAL_SCHEME, isTrustedUrl, normalizeServerUrl, sanitizeInAppPath } from "./policy";
 import { installInternalProtocol, installSessionSecurity, installWebContentsSecurity, secureWebPreferences, type SecurityContext } from "./security";
 import { startLocalServer, StartupError, waitForHealth, type LocalServerHandle } from "./server";
 import { checkForUpdatesManually, initUpdater } from "./updater";
@@ -201,6 +201,18 @@ if (!app.requestSingleInstanceLock()) {
     installInternalProtocol(ses, paths.pages());
     installSessionSecurity(ses, security);
     installDownloads(ses, { isTrusted: (url) => isTrustedUrl(url, trustedOrigin), icon: paths.icon });
+    // Mode local : la CSP du serveur embarqué (figée au build) n'autorise que 'self' ; on y ajoute
+    // l'origine exacte de la passerelle vocale, uniquement pour les documents de l'origine de confiance.
+    ses.webRequest.onHeadersReceived((details, callback) => {
+      const wsUrl = currentMode === "local" ? (localServer?.assistantWsUrl ?? null) : null;
+      const isDocument = details.resourceType === "mainFrame" || details.resourceType === "subFrame";
+      if (!wsUrl || !isDocument || !isTrustedUrl(details.url, trustedOrigin) || !details.responseHeaders) return callback({});
+      const headers = details.responseHeaders;
+      const key = Object.keys(headers).find((k) => k.toLowerCase() === "content-security-policy");
+      if (!key || !headers[key]) return callback({});
+      const source = new URL(wsUrl).origin;
+      callback({ responseHeaders: { ...headers, [key]: headers[key].map((v) => extendConnectSrc(v, source)) } });
+    });
     installWebContentsSecurity(security, childWindowOptions);
 
     registerIpc({
@@ -223,6 +235,7 @@ if (!app.requestSingleInstanceLock()) {
         return { ok: true };
       },
       openInApp,
+      assistantWsUrl: () => (currentMode === "local" ? (localServer?.assistantWsUrl ?? null) : null),
       icon: paths.icon,
     });
 

@@ -27,7 +27,8 @@
 | `UPLOAD_MAX_MB` | non | 15 par défaut |
 | `DEMO_PASSWORD`, `ALLOW_DEMO_SEED` | **non** | ne pas définir en production |
 | `ASSISTANT_ENABLED` | non | `true` pour activer l'assistant vocal Eric (`false` par défaut) |
-| `GEMINI_BACKEND` | si assistant | `enterprise` (Gemini Enterprise Agent Platform) — `developer` réservé aux essais |
+| `GEMINI_BACKEND` | si assistant | `enterprise` (Gemini Enterprise Agent Platform) ou `developer` (clé Gemini API) — inutile si chaque organisation saisit sa clé dans les paramètres |
+| `APP_ENCRYPTION_KEY` | si clés API saisies dans l'application | 32 octets en base64 (`openssl rand -base64 32`) : chiffre en base la clé Gemini des organisations. La perdre ou la changer rend les clés enregistrées illisibles (à ressaisir) |
 | `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION` | si assistant | projet Google Cloud ; région `eu` (résidence des données en Europe) |
 | `GEMINI_LIVE_MODEL`, `GEMINI_LIVE_VOICE` | non | `gemini-3.8-live` par défaut ; voix prédéfinie optionnelle |
 | `ASSISTANT_GATEWAY_PORT`, `ASSISTANT_MAX_SESSION_MINUTES`, `ASSISTANT_IDLE_SECONDS` | non | 3001, 30 min, 120 s par défaut |
@@ -76,6 +77,12 @@ Gemini Live avec les identifiants Google Cloud du serveur (jamais transmis au na
    (activé par défaut), et y choisit la voix et la durée maximale d'une conversation (plafonnée
    par `ASSISTANT_MAX_SESSION_MINUTES`). Ces réglages nécessitent la migration
    `20261014170000_assistant_settings` (`npm run db:deploy`).
+   **Clé API Gemini par organisation** (même section) : si elle est renseignée, Eric passe par la
+   Gemini API avec cette clé, en production comme en développement, sans identifiants Google Cloud.
+   Elle est chiffrée en base (AES-256-GCM, `APP_ENCRYPTION_KEY` obligatoire) et prime sur
+   `GEMINI_BACKEND` / `GEMINI_API_KEY` / `GOOGLE_CLOUD_PROJECT` du serveur. Migration
+   `20261014200000_assistant_api_key`. Résidence des données : la Gemini API n'offre pas le
+   choix de la région `eu` du mode enterprise.
 3. Proxy inverse : router `/ws/assistant` vers la passerelle **sur la même origine** que
    l'application, avec l'upgrade WebSocket et des délais longs, par exemple avec Nginx :
 

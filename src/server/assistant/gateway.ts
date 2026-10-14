@@ -14,7 +14,7 @@ import { resolveSessionToken, sessionTokenFromCookieHeader } from "../auth/sessi
 import { actionToolDeclarations, findActionTool } from "./action-tools";
 import { assistantOrgSettings, type AssistantOrgSettings } from "./availability";
 import { dataToolDeclarations, findDataTool, runDataTool, toolError, type ToolOutcome } from "./data-tools";
-import type { LiveConnector, LiveSessionLike, ToolResponse } from "./live-session";
+import { GeminiCredentialsMissingError, type LiveConnector, type LiveSessionLike, type ToolResponse } from "./live-session";
 
 export interface GatewayOptions {
   connector: LiveConnector;
@@ -57,7 +57,7 @@ const MAX_PENDING_CONFIRMS = 3;
 
 type ConfirmDecision = "approved" | "rejected" | "expired" | "withdrawn";
 
-function reject(socket: Duplex, status: number) {
+function rejectUpgrade(socket: Duplex, status: number) {
   socket.write(`HTTP/1.1 ${status} ${STATUS_TEXT[status] ?? "Error"}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
   socket.destroy();
 }
@@ -100,6 +100,11 @@ export async function startAssistantGateway(options: GatewayOptions): Promise<As
   });
 
   server.on("upgrade", (req: IncomingMessage, socket: Duplex, head: Buffer) => {
+    // Refus journalisés (sans cookie ni jeton) : indispensable pour diagnostiquer une connexion impossible
+    const reject = (s: Duplex, status: number) => {
+      opts.log("upgrade_rejected", { status, origin: req.headers.origin ?? null });
+      rejectUpgrade(s, status);
+    };
     void (async () => {
       const path = new URL(req.url ?? "/", "http://gateway").pathname;
       if (path !== ASSISTANT_WS_PATH) return reject(socket, 404);
@@ -126,7 +131,7 @@ export async function startAssistantGateway(options: GatewayOptions): Promise<As
       });
     })().catch((error: unknown) => {
       opts.log("upgrade_error", { message: error instanceof Error ? error.message : String(error) });
-      reject(socket, 503);
+      rejectUpgrade(socket, 503);
     });
   });
 
@@ -234,6 +239,7 @@ class AssistantConnection {
         }),
         resumeHandle: this.resumeHandle,
         voice: this.org.voice,
+        apiKey: this.org.apiKey,
         tools: this.opts.tools,
         events: {
           onMessage: (m) => {
@@ -255,7 +261,9 @@ class AssistantConnection {
     } catch (error) {
       if (!isCurrent()) return;
       this.opts.log("live_connect_failed", { userId: this.ctx.userId, message: error instanceof Error ? error.message : String(error) });
-      this.terminate("LIVE_UNAVAILABLE", CLOSE_CODES.LIVE_UNAVAILABLE, "Eric est momentanément indisponible");
+      // Configuration manquante : message actionnable plutôt qu'une indisponibilité générique
+      const message = error instanceof GeminiCredentialsMissingError ? error.message : "Eric est momentanément indisponible";
+      this.terminate("LIVE_UNAVAILABLE", CLOSE_CODES.LIVE_UNAVAILABLE, message);
     }
   }
 

@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildLocalServerEnv,
   classifyHealth,
+  extendConnectSrc,
   decidePermissionCheck,
   decidePermissionRequest,
   fitBoundsToDisplays,
@@ -127,7 +128,7 @@ describe("Electron — environnement du serveur local", () => {
     const { env, warnings, error } = buildLocalServerEnv({ DATABASE_URL: "postgresql://x", HOSTNAME: "0.0.0.0", APP_URL: "https://autre.fr", PORT: "80" }, { port: 41730, dataDir, systemEnv });
     expect(error).toBeUndefined();
     expect(warnings).toEqual([]);
-    expect(env).toMatchObject({ HOSTNAME: "127.0.0.1", PORT: "41730", APP_URL: "http://localhost:41730", NODE_ENV: "production", MAIL_DRIVER: "disabled", ASSISTANT_ENABLED: "false", SystemRoot: "C:\\Windows" });
+    expect(env).toMatchObject({ HOSTNAME: "127.0.0.1", PORT: "41730", APP_URL: "http://localhost:41730", NODE_ENV: "production", MAIL_DRIVER: "disabled", ASSISTANT_ENABLED: "true", SystemRoot: "C:\\Windows" });
     expect(env?.STORAGE_LOCAL_DIR).toBe(path.join(dataDir, "storage", "uploads"));
     expect(env).not.toHaveProperty("SECRET_OF_PARENT");
   });
@@ -137,13 +138,58 @@ describe("Electron — environnement du serveur local", () => {
     expect(env).not.toHaveProperty("NODE_OPTIONS");
     expect(env).not.toHaveProperty("ELECTRON_RUN_AS_NODE");
     expect(env?.MAIL_DRIVER).toBe("disabled");
-    expect(env?.ASSISTANT_ENABLED).toBe("false");
+    expect(env?.ASSISTANT_ENABLED).toBe("true");
     expect(env?.STORAGE_LOCAL_DIR).toBe(path.join(dataDir, "fichiers"));
-    expect(warnings).toHaveLength(4);
+    expect(warnings).toHaveLength(3);
   });
 
   it("exige DATABASE_URL", () => {
     expect(buildLocalServerEnv({}, { port: 5000, dataDir, systemEnv }).error).toMatch(/DATABASE_URL/);
+  });
+
+  it("active l'assistant vocal quand il est demandé et que les identifiants Gemini sont présents", () => {
+    const { env, assistant, warnings } = buildLocalServerEnv(
+      { DATABASE_URL: "postgresql://x", ASSISTANT_ENABLED: "true", GEMINI_BACKEND: "developer", GEMINI_API_KEY: "cle-test" },
+      { port: 41730, dataDir, systemEnv },
+    );
+    expect(warnings).toEqual([]);
+    expect(env?.ASSISTANT_ENABLED).toBe("true");
+    // La CSP du serveur embarqué est figée au build : l'origine est ajoutée par le processus principal
+    expect(env).not.toHaveProperty("NEXT_PUBLIC_ASSISTANT_WS_URL");
+    expect(assistant).toMatchObject({ port: 41731, allowedOrigin: "http://localhost:41730", wsUrl: "ws://localhost:41731/ws/assistant" });
+    expect(assistant?.env).toMatchObject({ ASSISTANT_ENABLED: "true", ASSISTANT_GATEWAY_PORT: "41731", GEMINI_API_KEY: "cle-test", DATABASE_URL: "postgresql://x", APP_URL: "http://localhost:41730" });
+  });
+
+  it("démarre la passerelle sans identifiants serveur : la clé de l'organisation (paramètres) suffit", () => {
+    const { env, assistant, warnings } = buildLocalServerEnv({ DATABASE_URL: "postgresql://x" }, { port: 41730, dataDir, systemEnv, encryptionKey: "a".repeat(44) });
+    expect(warnings).toEqual([]);
+    expect(env?.ASSISTANT_ENABLED).toBe("true");
+    expect(assistant?.port).toBe(41731);
+    // Clé maîtresse transmise au serveur ET à la passerelle (qui déchiffre la clé de l'organisation)
+    expect(env?.APP_ENCRYPTION_KEY).toBe("a".repeat(44));
+    expect(assistant?.env.APP_ENCRYPTION_KEY).toBe("a".repeat(44));
+  });
+
+  it("ne démarre pas la passerelle si l'assistant est explicitement désactivé", () => {
+    const { env, assistant } = buildLocalServerEnv({ DATABASE_URL: "postgresql://x", ASSISTANT_ENABLED: "false" }, { port: 41730, dataDir, systemEnv });
+    expect(env?.ASSISTANT_ENABLED).toBe("false");
+    expect(assistant).toBeNull();
+  });
+
+  it("clé API seule : Gemini API plutôt que Google Cloud ; la clé maîtresse de server.env est conservée", () => {
+    const fromKey = buildLocalServerEnv({ DATABASE_URL: "postgresql://x", GEMINI_API_KEY: "cle-test", GOOGLE_CLOUD_PROJECT: "projet" }, { port: 41730, dataDir, systemEnv, encryptionKey: "genere" });
+    expect(fromKey.assistant?.env.GEMINI_BACKEND).toBe("developer");
+    const explicit = buildLocalServerEnv({ DATABASE_URL: "postgresql://x", GEMINI_API_KEY: "cle-test", GEMINI_BACKEND: "enterprise", APP_ENCRYPTION_KEY: "fournie" }, { port: 41730, dataDir, systemEnv, encryptionKey: "genere" });
+    expect(explicit.assistant?.env.GEMINI_BACKEND).toBe("enterprise");
+    expect(explicit.env?.APP_ENCRYPTION_KEY).toBe("fournie");
+  });
+
+  it("ajoute l'origine de la passerelle à connect-src sans modifier les autres directives", () => {
+    const csp = "default-src 'self'; script-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'";
+    expect(extendConnectSrc(csp, "ws://localhost:41731")).toBe("default-src 'self'; script-src 'self' 'unsafe-inline'; connect-src 'self' ws://localhost:41731; frame-ancestors 'none'");
+    // Idempotent : une seconde application ne duplique pas la source
+    expect(extendConnectSrc(extendConnectSrc(csp, "ws://localhost:41731"), "ws://localhost:41731")).toBe(extendConnectSrc(csp, "ws://localhost:41731"));
+    expect(extendConnectSrc("default-src 'self'", "ws://localhost:41731")).toBe("default-src 'self'; connect-src 'self' ws://localhost:41731");
   });
 
   it("interprète le contrôle de santé", () => {

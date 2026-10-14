@@ -66,6 +66,8 @@ model Organization {
   assistantVoice             String?
   /// Durée maximale d'une conversation en minutes (null : valeur du serveur ; plafonnée par ASSISTANT_MAX_SESSION_MINUTES)
   assistantMaxSessionMinutes Int?
+  /// Clé API Gemini propre à l'organisation, chiffrée (AES-256-GCM, APP_ENCRYPTION_KEY) ; jamais renvoyée au navigateur
+  assistantApiKeyEncrypted   String?
   isDemo                     Boolean  @default(false)
   createdAt                  DateTime @default(now())
   updatedAt                  DateTime @updatedAt

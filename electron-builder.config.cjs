@@ -22,7 +22,8 @@ module.exports = {
   // Source = build/ et non build/desktop-server : electron-builder exclut toujours le node_modules
   // situé à la racine d'une source extraResources (→ resources/desktop-server).
   extraResources: [
-    { from: "build", to: ".", filter: ["desktop-server/**/*"] },
+    // Sans le cache d'exécution de Next (images optimisées écrites par un serveur déjà lancé, ex. tests)
+    { from: "build", to: ".", filter: ["desktop-server/**/*", "!desktop-server/.next-desktop/cache/**"] },
     { from: "build/icon.png", to: "icon.png" },
   ],
   asar: true,

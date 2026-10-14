@@ -151,6 +151,8 @@ export function localServerOrigin(port: number) {
 
 export interface LocalServerEnvResult {
   env?: Record<string, string>;
+  /** Configuration de la passerelle vocale à démarrer, ou null si l'assistant est désactivé/incomplet. */
+  assistant?: AssistantConfig | null;
   warnings: string[];
   error?: string;
 }
@@ -159,7 +161,10 @@ export interface LocalServerEnvResult {
  * Environnement du serveur Next.js embarqué : variables système minimales + server.env de
  * l'utilisateur + valeurs imposées (écoute sur la boucle locale, chemins dans userData).
  */
-export function buildLocalServerEnv(userEnv: Record<string, string>, opts: { port: number; dataDir: string; systemEnv: Record<string, string | undefined> }): LocalServerEnvResult {
+export function buildLocalServerEnv(
+  userEnv: Record<string, string>,
+  opts: { port: number; dataDir: string; systemEnv: Record<string, string | undefined>; /** Clé de chiffrement générée par l'application (si absente de server.env) */ encryptionKey?: string },
+): LocalServerEnvResult {
   const warnings: string[] = [];
   if (!userEnv.DATABASE_URL) return { warnings, error: "DATABASE_URL est absente de server.env" };
 
@@ -184,7 +189,15 @@ export function buildLocalServerEnv(userEnv: Record<string, string>, opts: { por
     env.MAIL_DRIVER = "disabled";
   }
   env.MAIL_DRIVER ??= "disabled";
-  if (env.ASSISTANT_ENABLED === "true") warnings.push("L'assistant vocal nécessite la passerelle WebSocket : désactivé en mode serveur local");
+  // Secrets en base (clé API Gemini saisie dans les paramètres) : clé maîtresse fournie par l'application
+  if (!env.APP_ENCRYPTION_KEY && opts.encryptionKey) env.APP_ENCRYPTION_KEY = opts.encryptionKey;
+  // Clé API seule (sans GEMINI_BACKEND explicite) : Gemini API plutôt que Google Cloud (ADC rarement présent sur un poste)
+  if (!userEnv.GEMINI_BACKEND && env.GEMINI_API_KEY) env.GEMINI_BACKEND = "developer";
+
+  // Assistant vocal Eric : passerelle WebSocket embarquée (second utilityProcess) sur le port du serveur + 1.
+  // Démarrée par défaut (ASSISTANT_ENABLED="false" pour s'en passer) : les identifiants Gemini peuvent
+  // venir de server.env ou de la clé API saisie par l'organisation dans Paramètres → Organisation.
+  const assistant = assistantConfig(env, opts.port);
 
   Object.assign(env, {
     NODE_ENV: "production",
@@ -192,10 +205,65 @@ export function buildLocalServerEnv(userEnv: Record<string, string>, opts: { por
     HOSTNAME: "127.0.0.1",
     APP_URL: origin,
     STORAGE_LOCAL_DIR: storage,
-    ASSISTANT_ENABLED: "false",
+    ASSISTANT_ENABLED: assistant ? "true" : "false",
     NEXT_TELEMETRY_DISABLED: "1",
   });
-  return { env, warnings };
+  return { env, assistant, warnings };
+}
+
+/**
+ * Ajoute une source à la directive connect-src d'une CSP, sans toucher aux autres directives.
+ * La CSP du serveur Next.js embarqué est figée au build (next.config.ts) : l'origine de la passerelle
+ * vocale locale, connue seulement à l'exécution, y est ajoutée par le processus principal.
+ */
+export function extendConnectSrc(csp: string, source: string): string {
+  const directives = csp.split(";").map((d) => d.trim()).filter(Boolean);
+  const index = directives.findIndex((d) => d.toLowerCase().startsWith("connect-src"));
+  if (index === -1) return [...directives, `connect-src 'self' ${source}`].join("; ");
+  const tokens = directives[index]!.split(/\s+/);
+  if (!tokens.includes(source)) directives[index] = [...tokens, source].join(" ");
+  return directives.join("; ");
+}
+
+/** Port de la passerelle vocale pour un serveur local donné : juste après le port du serveur Next. */
+export function assistantGatewayPort(serverPort: number): number {
+  return serverPort + 1;
+}
+
+export interface AssistantConfig {
+  /** Variables transmises au processus de la passerelle (DATABASE_URL, GEMINI_*, etc.) */
+  env: Record<string, string>;
+  /** Port d'écoute de la passerelle (loopback) */
+  port: number;
+  /** Origine autorisée pour l'upgrade WebSocket (celle de la fenêtre = serveur Next) */
+  allowedOrigin: string;
+  /** URL complète du WebSocket, injectée dans la CSP du serveur et exposée au renderer */
+  wsUrl: string;
+}
+
+/**
+ * Configuration de la passerelle vocale à partir de l'environnement déjà construit du serveur, ou
+ * null si l'assistant est explicitement désactivé (ASSISTANT_ENABLED="false"). Sans identifiants
+ * Gemini côté serveur, la passerelle démarre quand même : la clé de l'organisation (base) suffit.
+ */
+export function assistantConfig(serverEnv: Record<string, string>, serverPort: number): AssistantConfig | null {
+  if (serverEnv.ASSISTANT_ENABLED === "false") return null;
+  const backend = serverEnv.GEMINI_BACKEND === "developer" ? "developer" : "enterprise";
+
+  const port = assistantGatewayPort(serverPort);
+  const appOrigin = localServerOrigin(serverPort);
+  const wsUrl = `ws://localhost:${port}/ws/assistant`;
+  // La passerelle a besoin de la base (log d'outils, droits) et des identifiants Gemini ; elle écoute
+  // la boucle locale sur son propre port et n'accepte l'upgrade que depuis l'origine de l'application.
+  const env: Record<string, string> = {
+    ...serverEnv,
+    ASSISTANT_ENABLED: "true",
+    ASSISTANT_GATEWAY_PORT: String(port),
+    APP_URL: appOrigin,
+    GEMINI_BACKEND: backend,
+    NODE_ENV: "production",
+  };
+  return { env, port, allowedOrigin: appOrigin, wsUrl };
 }
 
 /** Interprétation de la réponse de GET /api/health. */

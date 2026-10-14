@@ -61,7 +61,7 @@ test.describe("Application de bureau — serveur local embarqué", () => {
       buffer: "undefined",
       ipcRenderer: "undefined",
       electron: "undefined",
-      api: ["getAppInfo", "internal", "isDesktop", "notify", "openExternal"],
+      api: ["assistantWsUrl", "getAppInfo", "internal", "isDesktop", "notify", "openExternal"],
       internal: ["getStatus", "openConfigFolder", "openLogFolder", "retry", "saveServerUrl", "useLocalServer"],
       frozen: true,
     });
@@ -227,8 +227,15 @@ test.describe("Application de bureau — serveur local embarqué", () => {
     await page.goto(`${LOCAL_ORIGIN}/settings/organization`);
     const card = page.locator("#assistant");
     await expect(card.getByText("Assistant vocal Eric", { exact: true })).toBeVisible();
-    // Serveur local : passerelle vocale non embarquée → avertissement explicite
-    await expect(card.getByText("La passerelle vocale n'est pas activée sur le serveur")).toBeVisible();
+    // Serveur local : passerelle vocale embarquée et démarrée par défaut → pas d'avertissement
+    await expect(card.getByText("La passerelle vocale n'est pas activée sur le serveur")).toHaveCount(0);
+    // Clé API Gemini : chiffrée par la clé maîtresse générée par l'application, jamais réaffichée
+    await expect(card.getByText("Eric ne pourra pas répondre tant qu'une clé n'est pas renseignée")).toBeVisible();
+    await card.getByLabel("Clé API Gemini").fill("AIzaCleDeTestBureauFactice0123456789wxyz");
+    await card.getByRole("button", { name: "Enregistrer les réglages d'Eric" }).click();
+    await expect(page.getByText("Clé API et réglages d'Eric enregistrés")).toBeVisible();
+    await expect(card.getByText("se termine par « wxyz »")).toBeVisible();
+    await expect(card.getByLabel("Clé API Gemini")).toHaveValue("");
     const toggle = card.getByRole("switch", { name: "Activer l'assistant vocal Eric" });
     await expect(toggle).toBeChecked();
     await card.getByLabel("Voix").selectOption("Kore");
@@ -240,7 +247,8 @@ test.describe("Application de bureau — serveur local embarqué", () => {
     await expect(toggle).not.toBeChecked();
     if (DESKTOP_SHOTS) await card.screenshot({ path: `${DESKTOP_SHOTS}/shot-assistant-settings.png` });
     const saved = await page.evaluate(async () => (await (await fetch("/api/settings/assistant")).json()).data);
-    expect(saved).toMatchObject({ enabled: false, voice: "Kore", maxSessionMinutes: 15, serverEnabled: false });
+    expect(saved).toMatchObject({ enabled: false, voice: "Kore", maxSessionMinutes: 15, serverEnabled: true, apiKeyConfigured: true, apiKeyHint: "wxyz", encryptionReady: true });
+    expect(JSON.stringify(saved)).not.toContain("AIzaCleDeTestBureauFactice");
     // Après rechargement, la page reflète l'état enregistré
     await page.reload();
     await expect(page.locator("#assistant").getByRole("switch", { name: "Activer l'assistant vocal Eric" })).not.toBeChecked();
@@ -303,4 +311,48 @@ test("configuration : refuse une URL de serveur non sécurisée", async () => {
   await page.getByRole("button", { name: "Se connecter" }).click();
   await expect(page.getByText("Seules les URL https:// sont acceptées")).toBeVisible();
   await app.close();
+});
+
+test("assistant vocal en mode local : la CSP autorise la passerelle embarquée et le WebSocket s'ouvre", async () => {
+  // Clé factice : la passerelle démarre et authentifie la connexion ; Gemini n'est joint qu'ensuite
+  const userData = makeProfile(testServerEnv({ ASSISTANT_ENABLED: "true", GEMINI_BACKEND: "developer", GEMINI_API_KEY: "cle-de-test-factice" }));
+  const { app, page } = await launchLocal(userData);
+  await login(page);
+  const result = await page.evaluate(async () => {
+    const desktop = (window as unknown as { eventflowDesktop: { assistantWsUrl(): Promise<string | null> } }).eventflowDesktop;
+    const url = await desktop.assistantWsUrl();
+    if (!url) return { url, opened: false, violation: null as string | null };
+    let violation: string | null = null;
+    document.addEventListener("securitypolicyviolation", (e) => (violation = `${e.violatedDirective} ${e.blockedURI}`));
+    const opened = await new Promise<boolean>((resolve) => {
+      const ws = new WebSocket(url);
+      ws.onopen = () => {
+        ws.close();
+        resolve(true);
+      };
+      ws.onerror = () => resolve(false);
+      setTimeout(() => resolve(false), 10_000);
+    });
+    return { url, opened, violation };
+  });
+  expect(result.url).toBe(`ws://localhost:${LOCAL_PORT + 1}/ws/assistant`);
+  expect(result.violation).toBeNull();
+  expect(result.opened).toBe(true);
+  // Un WebSocket vers une autre origine reste bloqué par la CSP
+  const foreign = await page.evaluate(
+    () =>
+      new Promise<string>((resolve) => {
+        document.addEventListener("securitypolicyviolation", (e) => resolve(e.violatedDirective));
+        try {
+          new WebSocket("ws://localhost:9/ws/assistant");
+        } catch (e) {
+          resolve(`exception ${(e as Error).name}`);
+        }
+        setTimeout(() => resolve("aucune violation"), 3000);
+      }),
+  );
+  expect(foreign).toContain("connect-src");
+  await app.close();
+  await expectPortClosed(LOCAL_PORT);
+  await expectPortClosed(LOCAL_PORT + 1);
 });

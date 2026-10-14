@@ -87,6 +87,12 @@
 
 ## Assistant vocal Eric
 
+- **Clé API Gemini de l'organisation** : saisie dans Paramètres → Organisation (`settings:manage`),
+  chiffrée en base (AES-256-GCM, IV aléatoire, clé maîtresse `APP_ENCRYPTION_KEY` hors base),
+  jamais renvoyée au navigateur (seuls ses 4 derniers caractères), jamais journalisée (l'audit
+  indique `apiKey: set | removed | unchanged`). Déchiffrée uniquement par la passerelle au moment
+  d'ouvrir la session Gemini. Application de bureau : clé maîtresse générée au premier lancement et
+  protégée par le système (`safeStorage`, DPAPI) dans `%APPDATA%\EventFlow\encryption-key.bin`.
 - Activation par organisation (Paramètres → Organisation, permission `settings:manage`, action
   auditée `settings.assistant_updated`) : vérifiée côté serveur à l'ouverture de la connexion
   (refus 403) et à chaque revalidation de session — une conversation en cours est coupée

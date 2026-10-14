@@ -1,7 +1,7 @@
 import "server-only";
 import { GoogleGenAI, Modality, type FunctionDeclaration, type LiveConnectConfig, type LiveServerMessage, type Session } from "@google/genai";
 import { MIC_SAMPLE_RATE } from "@/features/assistant/protocol";
-import { env } from "@/lib/env";
+import { env, type ServerEnv } from "@/lib/env";
 
 /**
  * Abstraction d'une session Gemini Live : la passerelle ne dépend que de cette interface,
@@ -36,6 +36,8 @@ export interface LiveConnectOptions {
   resumeHandle?: string;
   /** Voix prédéfinie choisie par l'organisation (sinon GEMINI_LIVE_VOICE) */
   voice?: string;
+  /** Clé API Gemini de l'organisation (Paramètres → Organisation) : prioritaire sur la configuration du serveur */
+  apiKey?: string;
   /** Outils déclarés au modèle */
   tools: FunctionDeclaration[];
   events: LiveSessionEvents;
@@ -60,24 +62,55 @@ export function liveConfig(options: Pick<LiveConnectOptions, "systemInstruction"
   };
 }
 
-/** Client Gemini côté serveur : les identifiants ne sont jamais exposés au navigateur. */
-function createClient() {
-  const e = env();
-  if (e.GEMINI_BACKEND === "developer") {
-    if (!e.GEMINI_API_KEY) throw new Error("GEMINI_API_KEY est requis avec GEMINI_BACKEND=developer");
-    return new GoogleGenAI({ apiKey: e.GEMINI_API_KEY });
+/** Aucun identifiant Gemini utilisable : ni clé de l'organisation, ni configuration du serveur. */
+export class GeminiCredentialsMissingError extends Error {
+  constructor() {
+    super("Aucune clé API Gemini : renseignez-la dans Paramètres → Organisation → Assistant vocal Eric");
   }
-  // Gemini Enterprise Agent Platform : identifiants Google Cloud par défaut (ADC)
-  if (!e.GOOGLE_CLOUD_PROJECT) throw new Error("GOOGLE_CLOUD_PROJECT est requis avec GEMINI_BACKEND=enterprise");
-  return new GoogleGenAI({ enterprise: true, project: e.GOOGLE_CLOUD_PROJECT, location: e.GOOGLE_CLOUD_LOCATION });
 }
 
-/** Connecteur réel vers Gemini Live (`GEMINI_LIVE_MODEL`). */
+/**
+ * Client Gemini côté serveur (les identifiants ne sont jamais exposés au navigateur) :
+ * 1. clé API de l'organisation → Gemini API, quel que soit l'environnement (y compris en production) ;
+ * 2. GEMINI_BACKEND=developer + GEMINI_API_KEY → Gemini API ;
+ * 3. GEMINI_BACKEND=enterprise + GOOGLE_CLOUD_PROJECT → Gemini Enterprise Agent Platform (ADC).
+ */
+export function geminiClientOptions(
+  orgApiKey: string | undefined,
+  e: Pick<ServerEnv, "GEMINI_BACKEND" | "GEMINI_API_KEY" | "GOOGLE_CLOUD_PROJECT" | "GOOGLE_CLOUD_LOCATION">,
+): { apiKey: string } | { enterprise: true; project: string; location: string } {
+  if (orgApiKey) return { apiKey: orgApiKey };
+  if (e.GEMINI_BACKEND === "developer") {
+    if (!e.GEMINI_API_KEY) throw new GeminiCredentialsMissingError();
+    return { apiKey: e.GEMINI_API_KEY };
+  }
+  if (!e.GOOGLE_CLOUD_PROJECT) throw new GeminiCredentialsMissingError();
+  return { enterprise: true, project: e.GOOGLE_CLOUD_PROJECT, location: e.GOOGLE_CLOUD_LOCATION };
+}
+
+function createClient(orgApiKey: string | undefined) {
+  return new GoogleGenAI(geminiClientOptions(orgApiKey, env()));
+}
+
+/**
+ * Connecteur réel vers Gemini Live (`GEMINI_LIVE_MODEL`). Les clients sont créés à la première
+ * conversation (et mis en cache par clé) : la passerelle démarre même sans identifiants serveur.
+ */
 export function createGeminiConnector(): LiveConnector {
   const e = env();
-  const ai = createClient();
+  const clients = new Map<string, GoogleGenAI>();
+  const clientFor = (apiKey: string | undefined) => {
+    const cacheKey = apiKey ? `key:${apiKey}` : "server";
+    let client = clients.get(cacheKey);
+    if (!client) {
+      client = createClient(apiKey);
+      clients.set(cacheKey, client);
+    }
+    return client;
+  };
 
-  return async ({ events, ...options }) => {
+  return async ({ events, apiKey, ...options }) => {
+    const ai = clientFor(apiKey);
     const session: Session = await ai.live.connect({
       model: e.GEMINI_LIVE_MODEL,
       config: liveConfig(options, options.voice ?? e.GEMINI_LIVE_VOICE),

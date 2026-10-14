@@ -73,7 +73,8 @@ exists(path.join(server, ".next-desktop", "BUILD_ID"), ".next-desktop/BUILD_ID")
 exists(path.join(server, ".next-desktop", "static"), ".next-desktop/static");
 for (const m of fs.readdirSync(path.join(root, "public", "models"))) exists(path.join(server, "public", "models", m), `public/models/${m}`);
 exists(path.join(server, "public", "Images", "logo.png"), "public/Images/logo.png");
-const serverFiles = walk(server);
+// Le cache d'exécution (écrit par un serveur lancé depuis build/, ex. tests) n'est pas embarqué
+const serverFiles = walk(server).filter((f) => !/[\\/]\.next-desktop[\\/]cache[\\/]/.test(f));
 const has = (re, label) => (serverFiles.some((f) => re.test(f)) ? ok(label) : fail(`absent : ${label}`));
 has(/[\\/]\.prisma[\\/]client[\\/].*query_engine.*\.node$/, "moteur Prisma (.node)");
 has(/[\\/]\.prisma[\\/]client[\\/]schema\.prisma$/, "schéma Prisma");
