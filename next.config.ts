@@ -62,6 +62,8 @@ const apiHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // Dossier de build distinct pour les tests de bout en bout : ne touche pas au .next du serveur de dev
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   reactStrictMode: true,
   poweredByHeader: false,
   // Modules natifs / lisant leurs fichiers de données : exécutés tels quels côté serveur

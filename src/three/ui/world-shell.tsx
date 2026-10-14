@@ -264,7 +264,12 @@ export function WorldShell({ canEditLayout, canCount, canDuplicate, assistant = 
     simulateLoading: (item) => bridgeDeps.current!.simulateLoading(item),
     moveEric: (spot) => bridgeDeps.current!.moveEric(spot),
   }), []);
-  const eric = useAssistant(assistant ? worldBridge : undefined);
+  const eric = useAssistant(assistant ? worldBridge : undefined, () => void load());
+  // Une action proposée par Eric doit être visible pour être confirmée : le panneau s'ouvre
+  const pendingConfirmations = eric.confirmations.filter((c) => !c.outcome).length;
+  useEffect(() => {
+    if (pendingConfirmations) setEricOpen(true);
+  }, [pendingConfirmations]);
   const ericInScene = useMemo(
     () => (assistant ? { spot: ericSpot, status: eric.status, thinking: eric.activity !== null, level: eric.voiceLevel, onClick: () => setEricOpen((o) => !o) } : null),
     [assistant, ericSpot, eric.status, eric.activity, eric.voiceLevel],

@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ASSISTANT_WS_PATH, CLOSE_CODES, MAX_WORLD_RESULT_CHARS, type ClientMessage, type ServerMessage } from "@/features/assistant/protocol";
+import { ASSISTANT_WS_PATH, CLOSE_CODES, MAX_WORLD_RESULT_CHARS, type ClientMessage, type ConfirmOutcome, type ServerMessage } from "@/features/assistant/protocol";
 import { findWorldTool, type WorldResult } from "@/features/assistant/world-tools";
 import { startMicrophone, type Microphone } from "./audio/microphone";
 import { VoicePlayer } from "./audio/player";
@@ -11,6 +11,16 @@ export type AssistantStatus = "idle" | "connecting" | "listening" | "speaking" |
 
 /** Exécute une commande de scène demandée par Eric (implémenté par le monde 3D). */
 export type WorldBridge = (name: string, args: Record<string, unknown>) => Promise<WorldResult>;
+
+/** Action proposée par Eric, en attente du clic de l'utilisateur (puis son issue, affichée brièvement). */
+export interface PendingConfirmation {
+  id: string;
+  title: string;
+  details: string[];
+  danger: boolean;
+  expiresAt: number;
+  outcome?: { kind: ConfirmOutcome; message: string };
+}
 
 export interface TranscriptLine {
   id: number;
@@ -39,13 +49,14 @@ const CLOSE_MESSAGES: Record<number, string> = {
  * Conversation vocale avec Eric : WebSocket vers la passerelle, micro (PCM 16 kHz), lecture de la
  * voix (PCM 24 kHz), transcription en direct et saisie au clavier dans la même conversation.
  */
-export function useAssistant(bridge?: WorldBridge) {
+export function useAssistant(bridge?: WorldBridge, onDataChanged?: () => void) {
   const [status, setStatus] = useState<AssistantStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [lines, setLines] = useState<TranscriptLine[]>([]);
   const [micOn, setMicOn] = useState(false);
   /** Données consultées en ce moment (« le stock », « les événements »…) */
   const [activity, setActivity] = useState<string | null>(null);
+  const [confirmations, setConfirmations] = useState<PendingConfirmation[]>([]);
 
   const socket = useRef<WebSocket | null>(null);
   const player = useRef<VoicePlayer | null>(null);
@@ -62,6 +73,8 @@ export function useAssistant(bridge?: WorldBridge) {
   const startRef = useRef<() => Promise<void>>(async () => undefined);
   const bridgeRef = useRef(bridge);
   bridgeRef.current = bridge;
+  const onDataChangedRef = useRef(onDataChanged);
+  onDataChangedRef.current = onDataChanged;
 
   const send = useCallback((message: ClientMessage) => {
     if (socket.current?.readyState === WebSocket.OPEN) socket.current.send(JSON.stringify(message));
@@ -95,6 +108,7 @@ export function useAssistant(bridge?: WorldBridge) {
     openRole.current = null;
     runningTools.current.clear();
     setActivity(null);
+    setConfirmations([]);
     const ws = socket.current;
     socket.current = null;
     if (ws && ws.readyState <= WebSocket.OPEN) ws.close(1000);
@@ -153,6 +167,15 @@ export function useAssistant(bridge?: WorldBridge) {
           if (message.state === "running") runningTools.current.set(message.id, message.label);
           else runningTools.current.delete(message.id);
           setActivity([...runningTools.current.values()].at(-1) ?? null);
+          break;
+        case "confirm_request":
+          setConfirmations((prev) => [...prev.filter((c) => c.id !== message.id), { id: message.id, title: message.title, details: message.details, danger: message.danger, expiresAt: Date.now() + message.expiresInSec * 1000 }]);
+          break;
+        case "confirm_closed":
+          setConfirmations((prev) => prev.map((c) => (c.id === message.id ? { ...c, outcome: { kind: message.outcome, message: message.message } } : c)));
+          // L'issue reste affichée quelques secondes, puis la carte disparaît
+          setTimeout(() => setConfirmations((prev) => prev.filter((c) => c.id !== message.id)), 4000);
+          if (message.outcome === "done") onDataChangedRef.current?.();
           break;
         case "world_call":
           void runWorldCall(message.name, message.args).then((result) => send({ type: "world_result", id: message.id, result }));
@@ -243,6 +266,15 @@ export function useAssistant(bridge?: WorldBridge) {
     [send],
   );
 
+  /** Réponse de l'utilisateur à une action proposée (seul un clic peut confirmer). */
+  const answer = useCallback(
+    (id: string, approved: boolean) => {
+      setConfirmations((prev) => prev.map((c) => (c.id === id ? { ...c, outcome: { kind: approved ? "done" : "cancelled", message: approved ? "Exécution…" : "Refusé" } } : c)));
+      send({ type: "confirm_answer", id, approved });
+    },
+    [send],
+  );
+
   /** Amplitude de la voix d'Eric (0..1), lue à chaque image par l'avatar. */
   const voiceLevel = useCallback(() => player.current?.level() ?? 0, []);
   /** Niveau du micro (0..1) : lu par le panneau à son rythme, sans faire re-rendre la scène. */
@@ -267,5 +299,5 @@ export function useAssistant(bridge?: WorldBridge) {
     [clearRetry, teardown],
   );
 
-  return { status, error, lines, micOn, micLevel, activity, start, stop, toggleMic, sendText, voiceLevel };
+  return { status, error, lines, micOn, micLevel, activity, confirmations, answer, start, stop, toggleMic, sendText, voiceLevel };
 }

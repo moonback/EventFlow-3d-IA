@@ -20,6 +20,7 @@ import { listStaff, staffSchedule } from "../services/staff-service";
 import { getEventLoad, getVehicle, listVehicles } from "../services/vehicle-service";
 import { globalSearch } from "../services/search-service";
 import { compact, MAX_RESULT_CHARS } from "./compact";
+import { dateArg, declaration, idArg, parseDate, textArg } from "./tool-args";
 
 /**
  * Outils « données » d'Eric : lecture seule, exécutés dans la passerelle avec l'AuthContext de
@@ -40,29 +41,8 @@ export interface DataTool<TInput extends ZodType = ZodType> {
 const tool = <T extends ZodType>(t: DataTool<T>) => t as unknown as DataTool;
 
 const LIST = { page: 1, dir: "asc" as const };
-const id = (what: string) => z.string().trim().min(1).max(64).describe(`Identifiant ${what} (obtenu par search ou un outil list_*)`);
-const text = (what: string) => z.string().trim().min(1).max(100).describe(what);
-const dateArg = (what: string) =>
-  z
-    .string()
-    .trim()
-    .regex(/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$/, "Format AAAA-MM-JJ ou AAAA-MM-JJTHH:MM")
-    .refine(isCalendarDate, "Date inexistante")
-    .describe(`${what} (AAAA-MM-JJ, heure locale de l'agence)`);
-
-/** Refuse les dates impossibles (« 2031-02-30 ») au lieu de les reporter au mois suivant. */
-function isCalendarDate(value: string) {
-  const [y, m, d] = value.slice(0, 10).split("-").map(Number) as [number, number, number];
-  const date = new Date(Date.UTC(y, m - 1, d));
-  return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d;
-}
-
-/** « 2026-10-20 » → début de journée locale ; avec `endOfDay`, fin de cette journée. */
-function parseDate(value: string, timezone: string, endOfDay = false): Date {
-  const local = value.includes("T") ? value : `${value}T00:00`;
-  const date = zonedLocalToUtc(local, timezone);
-  return endOfDay && !value.includes("T") ? addDays(date, 1) : date;
-}
+const id = idArg;
+const text = (what: string) => textArg(what);
 
 function range(ctx: AuthContext, from: string | undefined, to: string | undefined, defaultDays: number) {
   const tz = ctx.organization.timezone;
@@ -330,10 +310,7 @@ export function findDataTool(name: string) {
 
 /** Déclarations envoyées à Gemini (schémas Zod convertis en JSON Schema). */
 export function dataToolDeclarations() {
-  return DATA_TOOLS.map((t) => {
-    const { $schema: _schema, ...parameters } = z.toJSONSchema(t.input, { io: "input" }) as Record<string, unknown>;
-    return { name: t.name, description: t.description, parametersJsonSchema: parameters };
-  });
+  return DATA_TOOLS.map((t) => declaration(t.name, t.description, t.input));
 }
 
 export type ToolOutcome = { ok: true; output: unknown } | { ok: false; error: string; message: string };
@@ -353,13 +330,18 @@ export async function runDataTool(ctx: AuthContext, name: string, args: unknown)
     if (JSON.stringify(output).length > MAX_RESULT_CHARS * 1.5) return { ok: false, error: "RESULT_TOO_LARGE", message: "Résultat trop volumineux : précisez la demande" };
     return { ok: true, output };
   } catch (error) {
-    if (isAppError(error)) {
-      if (error.status === 403) return { ok: false, error: "FORBIDDEN", message: "L'interlocuteur n'a pas les droits pour consulter ces informations" };
-      if (error.status === 404) return { ok: false, error: "NOT_FOUND", message: error.message };
-      return { ok: false, error: error.code, message: error.message };
-    }
-    if (error instanceof RangeError) return { ok: false, error: "INVALID_ARGUMENTS", message: error.message };
-    console.error(`[assistant] tool ${name} failed`, error);
-    return { ok: false, error: "INTERNAL", message: "Erreur interne pendant la consultation" };
+    return toolError(name, error);
   }
+}
+
+/** Erreur d'outil → réponse explicite pour Gemini, sans détail interne. */
+export function toolError(name: string, error: unknown): Extract<ToolOutcome, { ok: false }> {
+  if (isAppError(error)) {
+    if (error.status === 403) return { ok: false, error: "FORBIDDEN", message: "L'interlocuteur n'a pas les droits pour cette opération" };
+    if (error.status === 404) return { ok: false, error: "NOT_FOUND", message: error.message };
+    return { ok: false, error: error.code, message: error.message };
+  }
+  if (error instanceof RangeError) return { ok: false, error: "INVALID_ARGUMENTS", message: error.message };
+  console.error(`[assistant] tool ${name} failed`, error);
+  return { ok: false, error: "INTERNAL", message: "Erreur interne pendant l'opération" };
 }

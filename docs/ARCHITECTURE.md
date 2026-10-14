@@ -111,6 +111,10 @@ Navigateur ── micro PCM 16 kHz ──> passerelle /ws/assistant (Node, `ws`)
   parle) ; ne force le rendu (`invalidate`) que lorsqu'il bouge ou converse. Cliquer sur lui
   ouvre la conversation. Le hook `useAssistant` vit dans `WorldShell` ; le niveau du micro est
   lu par le panneau seul, pour ne pas re-rendre la scène.
+- **Outils « actions »** (`src/server/assistant/action-tools.ts`) : `prepare` construit l'aperçu
+  depuis la base, la passerelle envoie un `confirm_request` et attend le `confirm_answer` du
+  clic (60 s), relit les droits puis appelle `execute` (mêmes services que les pages). Le
+  panneau affiche les cartes « Confirmer / Refuser » et la scène est rechargée après une action.
 - Protocole (`src/features/assistant/protocol.ts`) : trames binaires = audio, trames texte = JSON
   validé par Zod. Côté client : `src/assistant/` (micro, lecteur, hook `useAssistant`) et le
   panneau `src/three/ui/assistant-panel.tsx`.

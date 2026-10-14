@@ -24,6 +24,8 @@ export const clientMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("audio_end") }),
   /** Fin de la conversation demandée par l'utilisateur */
   z.object({ type: z.literal("hangup") }),
+  /** Réponse de l'utilisateur (clic) à une demande de confirmation d'action */
+  z.object({ type: z.literal("confirm_answer"), id: z.string().min(1).max(100), approved: z.boolean() }),
   /** Résultat d'une commande de scène (`world_call`) exécutée par le navigateur */
   z.object({
     type: z.literal("world_result"),
@@ -47,7 +49,13 @@ export type ServerMessage =
   | { type: "tool"; id: string; label: string; state: "running" | "done" | "error" }
   /** Commande de scène à exécuter par le navigateur, qui répond par `world_result` */
   | { type: "world_call"; id: string; name: string; args: Record<string, unknown> }
+  /** Eric propose une action : l'utilisateur confirme ou refuse par un clic (`confirm_answer`) */
+  | { type: "confirm_request"; id: string; title: string; details: string[]; danger: boolean; expiresInSec: number }
+  /** Fin d'une demande de confirmation (exécutée, refusée, expirée, abandonnée ou en échec) */
+  | { type: "confirm_closed"; id: string; outcome: ConfirmOutcome; message: string }
   | { type: "error"; code: AssistantErrorCode; message: string };
+
+export type ConfirmOutcome = "done" | "cancelled" | "expired" | "withdrawn" | "failed";
 
 export type AssistantErrorCode = "LIVE_UNAVAILABLE" | "BAD_MESSAGE" | "SESSION_EXPIRED" | "IDLE_TIMEOUT" | "MAX_DURATION" | "REPLACED";
 

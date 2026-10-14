@@ -422,3 +422,123 @@ describe("commandes de scène", () => {
     await c.closed;
   });
 });
+
+describe("actions avec confirmation", () => {
+  const statusOf = async (id: string) => (await db.event.findUniqueOrThrow({ where: { id } })).status;
+  const open = async (g = port) => {
+    const before = sessions.length;
+    const c = await connect(g, { cookie });
+    await c.waitFor(isReady);
+    return { c, live: sessions[before]! };
+  };
+  const propose = (live: FakeLive, id: string, eventId: string, status = "READY") => live.emit({ toolCall: { functionCalls: [{ id, name: "change_event_status", args: { event_id: eventId, status } }] } });
+
+  it("n'exécute qu'après le clic « Confirmer », avec un aperçu tiré de la base, et l'audite", async () => {
+    const event = await createEvent(ctx.organizationId, day(22), day(23));
+    const { c, live } = await open();
+    propose(live, "a1", event.id);
+    const request = await c.waitFor((m) => m.type === "confirm_request");
+    expect(request).toMatchObject({ id: "a1", title: "Changer le statut de l'événement", details: [`${event.name} (${event.reference})`, "Confirmé → Prêt à partir"], danger: false, expiresInSec: 60 });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(await statusOf(event.id)).toBe("CONFIRMED");
+    expect(live.toolResponses).toEqual([]);
+
+    c.ws.send(JSON.stringify({ type: "confirm_answer", id: "a1", approved: true }));
+    await until(() => live.toolResponses.length === 1);
+    expect(live.toolResponses[0]![0]!.response).toEqual({ output: { status: "done", result: { status: "Prêt à partir" } } });
+    expect(await statusOf(event.id)).toBe("READY");
+    await c.waitFor((m) => m.type === "confirm_closed" && m.outcome === "done");
+    expect(await db.auditLog.count({ where: { organizationId: ctx.organizationId, actorId: ctx.userId, action: "assistant.action" } })).toBeGreaterThanOrEqual(1);
+    c.ws.close();
+    await c.closed;
+  });
+
+  it("ne modifie rien si l'utilisateur refuse", async () => {
+    const event = await createEvent(ctx.organizationId, day(22), day(23));
+    const { c, live } = await open();
+    propose(live, "a2", event.id);
+    await c.waitFor((m) => m.type === "confirm_request");
+    c.ws.send(JSON.stringify({ type: "confirm_answer", id: "a2", approved: false }));
+    await until(() => live.toolResponses.length === 1);
+    expect(live.toolResponses[0]![0]!.response).toMatchObject({ output: { status: "cancelled_by_user" } });
+    expect(await statusOf(event.id)).toBe("CONFIRMED");
+    c.ws.close();
+    await c.closed;
+  });
+
+  it("une proposition retirée par le modèle n'est jamais exécutée, même si le clic arrive après", async () => {
+    const event = await createEvent(ctx.organizationId, day(22), day(23));
+    const { c, live } = await open();
+    propose(live, "a3", event.id);
+    await c.waitFor((m) => m.type === "confirm_request");
+    live.emit({ toolCallCancellation: { ids: ["a3"] } });
+    await c.waitFor((m) => m.type === "confirm_closed" && m.id === "a3" && m.outcome === "withdrawn");
+    c.ws.send(JSON.stringify({ type: "confirm_answer", id: "a3", approved: true }));
+    await new Promise((r) => setTimeout(r, 100));
+    expect(await statusOf(event.id)).toBe("CONFIRMED");
+    expect(live.toolResponses).toEqual([]); // appel annulé : aucune réponse attendue par Gemini
+    c.ws.close();
+    await c.closed;
+  });
+
+  it("expire sans rien modifier", async () => {
+    const event = await createEvent(ctx.organizationId, day(22), day(23));
+    const { c, live } = await open((await gateway({ confirmTimeoutMs: 100 })).port);
+    propose(live, "a4", event.id);
+    await c.waitFor((m) => m.type === "confirm_closed" && m.outcome === "expired");
+    await until(() => live.toolResponses.length === 1);
+    expect(live.toolResponses[0]![0]!.response).toMatchObject({ output: { status: "expired" } });
+    c.ws.send(JSON.stringify({ type: "confirm_answer", id: "a4", approved: true }));
+    await new Promise((r) => setTimeout(r, 100));
+    expect(await statusOf(event.id)).toBe("CONFIRMED");
+    c.ws.close();
+    await c.closed;
+  });
+
+  it("relit les droits au moment d'exécuter : permission retirée pendant l'attente → rien n'est fait", async () => {
+    const event = await createEvent(ctx.organizationId, day(22), day(23));
+    const { c, live } = await open();
+    propose(live, "a5", event.id);
+    await c.waitFor((m) => m.type === "confirm_request");
+    await db.rolePermission.create({ data: { organizationId: ctx.organizationId, role: "LOGISTICS_MANAGER", permission: "events:write", granted: false } });
+    try {
+      c.ws.send(JSON.stringify({ type: "confirm_answer", id: "a5", approved: true }));
+      await until(() => live.toolResponses.length === 1);
+      expect(live.toolResponses[0]![0]!.response).toMatchObject({ error: "FORBIDDEN" });
+      expect(await statusOf(event.id)).toBe("CONFIRMED");
+    } finally {
+      await db.rolePermission.deleteMany({ where: { organizationId: ctx.organizationId, role: "LOGISTICS_MANAGER", permission: "events:write" } });
+    }
+    c.ws.close();
+    await c.closed;
+  });
+
+  it("refuse d'emblée sans la permission requise, sans demander de confirmation", async () => {
+    const sales = await createUserInOrg(ctx.organizationId, "SALES");
+    const before = sessions.length;
+    const c = await connect(port, { cookie: `ef_session=${await sessionToken(sales)}` });
+    await c.waitFor(isReady);
+    const live = sessions[before]!;
+    live.emit({ toolCall: { functionCalls: [{ id: "a6", name: "transfer_stock", args: { product_id: "p", from_location_id: "l1", to_location_id: "l2", quantity: 1 } }] } });
+    await until(() => live.toolResponses.length === 1);
+    expect(live.toolResponses[0]![0]!.response).toMatchObject({ error: "FORBIDDEN" });
+    expect(c.messages.some((m) => m.type === "confirm_request")).toBe(false);
+    c.ws.close();
+    await c.closed;
+  });
+
+  it("plafonne les propositions simultanées et ignore un clic sur une proposition inconnue", async () => {
+    const events = await Promise.all([1, 2, 3, 4].map(() => createEvent(ctx.organizationId, day(22), day(23))));
+    const { c, live } = await open();
+    live.emit({ toolCall: { functionCalls: events.map((e, i) => ({ id: `m${i}`, name: "change_event_status", args: { event_id: e.id, status: "READY" } })) } });
+    await until(() => c.messages.filter((m) => m.type === "confirm_request").length === 3);
+    c.ws.send(JSON.stringify({ type: "confirm_answer", id: "inconnue", approved: true }));
+    for (const id of ["m0", "m1", "m2", "m3"]) c.ws.send(JSON.stringify({ type: "confirm_answer", id, approved: false }));
+    await until(() => live.toolResponses.length === 1);
+    const errors = live.toolResponses[0]!.filter((r) => "error" in r.response);
+    expect(errors.map((r) => r.response.error)).toEqual(["TOO_MANY_PENDING"]);
+    for (const e of events) expect(await statusOf(e.id)).toBe("CONFIRMED");
+    c.ws.close();
+    await c.closed;
+  });
+});

@@ -1,5 +1,5 @@
 "use client";
-import { AudioLines, Loader2, Mic, MicOff, PhoneOff, Send, X } from "lucide-react";
+import { AudioLines, Check, Loader2, Mic, MicOff, PhoneOff, Send, TriangleAlert, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -102,6 +102,33 @@ export function AssistantPanel({ assistant: a, open, onOpenChange: setOpen }: { 
             <Loader2 className="size-3 animate-spin" aria-hidden /> Eric consulte {a.activity}…
           </p>
         ) : null}
+        {a.confirmations.map((c) => (
+          <div key={c.id} role="group" aria-label={`Action proposée : ${c.title}`} className={cn("flex flex-col gap-1.5 rounded-lg border p-2.5 text-xs", c.danger ? "border-warning/60 bg-warning/10" : "border-primary/40 bg-primary/5")}>
+            <p className="flex items-center gap-1.5 font-medium text-foreground">
+              {c.danger ? <TriangleAlert className="size-3.5 text-warning" aria-hidden /> : null}
+              Eric propose : {c.title}
+            </p>
+            <ul className="flex flex-col gap-0.5 text-muted-foreground">
+              {c.details.map((d) => (
+                <li key={d}>{d}</li>
+              ))}
+            </ul>
+            {c.outcome ? (
+              <p className={cn("font-medium", c.outcome.kind === "done" ? "text-success" : c.outcome.kind === "failed" ? "text-destructive" : "text-muted-foreground")} role="status">
+                {c.outcome.message}
+              </p>
+            ) : (
+              <div className="flex gap-1.5">
+                <Button size="sm" variant={c.danger ? "destructive" : "default"} onClick={() => a.answer(c.id, true)}>
+                  <Check /> Confirmer
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => a.answer(c.id, false)}>
+                  Refuser
+                </Button>
+              </div>
+            )}
+          </div>
+        ))}
         {a.error ? <p className="text-xs text-destructive">{a.error}</p> : null}
       </div>
 

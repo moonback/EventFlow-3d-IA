@@ -265,6 +265,14 @@ Carte « Confirmer » ◄────────── action ────┘  
 - constat : sur ce poste (GPU Intel HD 530, navigateur intégré), la scène perd parfois son contexte WebGL après la réduction automatique de qualité — reproduit **à l'identique sans Eric** (test A/B), donc préexistant ; en développement, chaque rechargement à chaud recrée aussi le canvas.
 - non fait : pastille d'Eric dans le plan 2D (mode « Plan ») ; modèle GLB réaliste avec visèmes.
 
+**Étape D « Eric agit » — livrée** :
+- 4 outils « actions » (`change_event_status` hors annulation, `add_event_note`, `create_task`, `transfer_stock`) : aperçu construit depuis la base, exécution par les services existants après un clic « Confirmer » ;
+- passerelle : `confirm_request` / `confirm_answer` / `confirm_closed`, délai 60 s, retrait par le modèle ou reprise de session = jamais exécuté, droits relus avant d'exécuter, 3 propositions au plus (contrôle placé après `prepare` pour éviter une course), audit `assistant.action` ;
+- bug trouvé en écrivant les tests : le résultat d'une action écrasait le statut `done` renvoyé à Gemini (`{ status: "done", ...result }` avec `result.status`) → résultat isolé dans `result` ;
+- panneau : cartes de confirmation (mise en garde pour les actions lourdes), ouverture automatique, rechargement de la scène après une action ; persona : actions seulement sur demande explicite, « un oui à l'oral ne remplace pas le clic » ;
+- tests : `tests/integration/assistant-actions.test.ts` (aperçus, exécutions, audit, isolation), parcours de confirmation dans `assistant-gateway.test.ts` (confirmé, refusé, retiré puis cliqué, expiré, permission retirée pendant l'attente, permission absente, plafond, clic forgé) ; E2E `tests/e2e/assistant.spec.ts` avec Gemini scripté ;
+- outillage : `NEXT_DIST_DIR` (build E2E dans `.next-e2e`, sans toucher au serveur de dev).
+
 Reste à vérifier : conversation **au micro** sur un vrai navigateur (le navigateur de prévisualisation bloque le micro ; testé au clavier, voix et interruption comprises) ; mode `enterprise` avec un vrai projet Google Cloud ; choix d'une voix masculine française (`GEMINI_LIVE_VOICE`).
 
 ## Ordre de livraison conseillé

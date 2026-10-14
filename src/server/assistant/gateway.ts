@@ -8,9 +8,11 @@ import { findWorldTool, isWorldErrorCode, worldToolDeclarations, type WorldResul
 import { ASSISTANT_WS_PATH, CLOSE_CODES, MAX_AUDIO_FRAME_BYTES, parseClientMessage, type AssistantErrorCode, type ServerMessage } from "@/features/assistant/protocol";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
+import { audit } from "../audit";
 import { can, type AuthContext } from "../auth/context";
 import { resolveSessionToken, sessionTokenFromCookieHeader } from "../auth/session-token";
-import { dataToolDeclarations, findDataTool, runDataTool, type ToolOutcome } from "./data-tools";
+import { actionToolDeclarations, findActionTool } from "./action-tools";
+import { dataToolDeclarations, findDataTool, runDataTool, toolError, type ToolOutcome } from "./data-tools";
 import type { LiveConnector, LiveSessionLike, ToolResponse } from "./live-session";
 
 export interface GatewayOptions {
@@ -32,6 +34,8 @@ export interface GatewayOptions {
   toolTimeoutMs?: number;
   /** Délai de réponse du navigateur à une commande de scène */
   worldTimeoutMs?: number;
+  /** Délai laissé à l'utilisateur pour confirmer une action */
+  confirmTimeoutMs?: number;
   log?: (event: string, data?: Record<string, unknown>) => void;
 }
 
@@ -45,6 +49,10 @@ const STATUS_TEXT: Record<number, string> = { 401: "Unauthorized", 403: "Forbidd
 const MAX_LIVE_RECONNECTS = 3;
 /** Appels d'outils exécutés par message `toolCall` (les suivants sont refusés) */
 const MAX_PARALLEL_TOOLS = 8;
+/** Demandes de confirmation simultanées au plus */
+const MAX_PENDING_CONFIRMS = 3;
+
+type ConfirmDecision = "approved" | "rejected" | "expired" | "withdrawn";
 
 function reject(socket: Duplex, status: number) {
   socket.write(`HTTP/1.1 ${status} ${STATUS_TEXT[status] ?? "Error"}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
@@ -67,10 +75,11 @@ export async function startAssistantGateway(options: GatewayOptions): Promise<As
     maxDurationMs: options.maxDurationMs ?? e.ASSISTANT_MAX_SESSION_MINUTES * 60_000,
     revalidateMs: options.revalidateMs ?? 60_000,
     resolveSession: options.resolveSession ?? resolveSessionToken,
-    tools: options.tools ?? [...dataToolDeclarations(), ...worldToolDeclarations()],
+    tools: options.tools ?? [...dataToolDeclarations(), ...worldToolDeclarations(), ...actionToolDeclarations()],
     runTool: options.runTool ?? runDataTool,
     toolTimeoutMs: options.toolTimeoutMs ?? 10_000,
     worldTimeoutMs: options.worldTimeoutMs ?? 5_000,
+    confirmTimeoutMs: options.confirmTimeoutMs ?? 60_000,
     log: options.log ?? ((event: string, data?: Record<string, unknown>) => console.info(`[assistant] ${event}`, data ?? {})),
     connector: options.connector,
   };
@@ -138,6 +147,7 @@ type ResolvedOptions = {
   runTool: (ctx: AuthContext, name: string, args: unknown) => Promise<ToolOutcome>;
   toolTimeoutMs: number;
   worldTimeoutMs: number;
+  confirmTimeoutMs: number;
   log: (event: string, data?: Record<string, unknown>) => void;
   connector: LiveConnector;
 };
@@ -157,6 +167,8 @@ class AssistantConnection {
   private readonly cancelledCalls = new Set<string>();
   /** Commandes de scène en attente de `world_result` */
   private readonly pendingWorld = new Map<string, (result: WorldResult) => void>();
+  /** Actions en attente du clic de l'utilisateur */
+  private readonly pendingConfirms = new Map<string, (decision: ConfirmDecision) => void>();
   private readonly timers: NodeJS.Timeout[] = [];
 
   constructor(
@@ -243,6 +255,8 @@ class AssistantConnection {
     const old = this.live;
     this.live = null;
     this.generation++; // les rappels de l'ancienne session sont désormais ignorés
+    // La nouvelle session n'attend plus les réponses en cours : les propositions d'action sont retirées
+    for (const settle of [...this.pendingConfirms.values()]) settle("withdrawn");
     old?.close();
     this.send({ type: "state", state: "connecting" });
     void this.connectLive();
@@ -272,7 +286,10 @@ class AssistantConnection {
       if (content.turnComplete) this.send({ type: "turn_complete" });
     }
     if (m.toolCall?.functionCalls?.length) void this.runToolCalls(m.toolCall.functionCalls);
-    for (const id of m.toolCallCancellation?.ids ?? []) this.cancelledCalls.add(id);
+    for (const id of m.toolCallCancellation?.ids ?? []) {
+      this.cancelledCalls.add(id);
+      this.pendingConfirms.get(id)?.("withdrawn");
+    }
     const update = m.sessionResumptionUpdate;
     if (update?.resumable && update.newHandle) this.resumeHandle = update.newHandle;
     if (m.goAway) this.reconnectLive("goAway");
@@ -294,13 +311,16 @@ class AssistantConnection {
     const id = call.id ?? "";
     const name = call.name ?? "";
     const world = findWorldTool(name);
+    const action = findActionTool(name);
     const label = findDataTool(name)?.label ?? name;
     const started = Date.now();
-    // Les commandes de scène se voient dans la 3D : pas d'indicateur « Eric consulte … »
-    if (!world) this.send({ type: "tool", id, label, state: "running" });
+    // Scène (visible dans la 3D) et actions (carte de confirmation) : pas d'indicateur « Eric consulte … »
+    const indicator = !world && !action;
+    if (indicator) this.send({ type: "tool", id, label, state: "running" });
     let outcome: ToolOutcome;
     if (!allowed) outcome = { ok: false, error: "TOO_MANY_CALLS", message: `${MAX_PARALLEL_TOOLS} consultations au plus à la fois` };
     else if (world) outcome = await this.runWorldTool(id, name, call.args ?? {});
+    else if (action) outcome = await this.runActionTool(id, name, call.args ?? {});
     else {
       let timer: NodeJS.Timeout | undefined;
       const timeout = new Promise<ToolOutcome>((resolve) => {
@@ -309,12 +329,74 @@ class AssistantConnection {
       outcome = await Promise.race([this.opts.runTool(this.ctx, name, call.args ?? {}), timeout]).finally(() => clearTimeout(timer));
     }
     const durationMs = Date.now() - started;
-    if (!world) this.send({ type: "tool", id, label, state: outcome.ok ? "done" : "error" });
+    if (indicator) this.send({ type: "tool", id, label, state: outcome.ok ? "done" : "error" });
     this.opts.log("tool", { userId: this.ctx.userId, tool: name, ok: outcome.ok, error: outcome.ok ? undefined : outcome.error, durationMs });
     await db.assistantToolCall
       .create({ data: { organizationId: this.ctx.organizationId, userId: this.ctx.userId, tool: name.slice(0, 64), ok: outcome.ok, errorCode: outcome.ok ? null : outcome.error, durationMs } })
       .catch((error: unknown) => this.opts.log("tool_log_failed", { message: error instanceof Error ? error.message : String(error) }));
     return { id, name, response: outcome.ok ? { output: outcome.output } : { error: outcome.error, message: outcome.message } };
+  }
+
+  /**
+   * Action : droits et arguments vérifiés, aperçu construit depuis la base, puis attente du clic.
+   * Rien n'est exécuté sans « approved » ; une demande retirée par le modèle, interrompue par une
+   * reprise de session ou expirée n'exécute jamais rien, même si un clic arrive ensuite.
+   */
+  private async runActionTool(id: string, name: string, args: Record<string, unknown>): Promise<ToolOutcome> {
+    const tool = findActionTool(name)!;
+    const forbidden: ToolOutcome = { ok: false, error: "FORBIDDEN", message: "L'interlocuteur n'a pas les droits pour cette opération" };
+    if (tool.permissions.some((p) => !can(this.ctx, p))) return forbidden;
+    const parsed = tool.input.safeParse(args);
+    if (!parsed.success) return { ok: false, error: "INVALID_ARGUMENTS", message: parsed.error.issues.map((i) => `${i.path.join(".") || "arguments"} : ${i.message}`).join(" ; ") };
+    let preview;
+    try {
+      preview = await tool.prepare(this.ctx, parsed.data);
+    } catch (error) {
+      return toolError(name, error);
+    }
+    // Contrôlé après `prepare` (asynchrone) et juste avant l'enregistrement : sans course possible
+    if (this.pendingConfirms.size >= MAX_PENDING_CONFIRMS) return { ok: false, error: "TOO_MANY_PENDING", message: "Des actions attendent déjà une confirmation" };
+    const confirmId = id || `a${Date.now()}`;
+    const decision = await new Promise<ConfirmDecision>((resolve) => {
+      const settle = (d: ConfirmDecision) => {
+        clearTimeout(timer);
+        this.pendingConfirms.delete(confirmId);
+        resolve(d);
+      };
+      const timer = setTimeout(() => settle("expired"), this.opts.confirmTimeoutMs);
+      this.pendingConfirms.set(confirmId, settle);
+      this.send({ type: "confirm_request", id: confirmId, title: preview.title, details: preview.details, danger: Boolean(preview.danger), expiresInSec: Math.round(this.opts.confirmTimeoutMs / 1000) });
+    });
+    const close = (outcome: "done" | "cancelled" | "expired" | "withdrawn" | "failed", message: string) => this.send({ type: "confirm_closed", id: confirmId, outcome, message });
+    if (decision === "expired") {
+      close("expired", "Délai de confirmation dépassé : rien n'a été modifié");
+      return { ok: true, output: { status: "expired", message: "L'utilisateur n'a pas confirmé à temps : rien n'a été modifié" } };
+    }
+    if (decision === "withdrawn" || this.cancelledCalls.has(id)) {
+      close("withdrawn", "Proposition retirée : rien n'a été modifié");
+      return { ok: true, output: { status: "withdrawn" } };
+    }
+    if (decision === "rejected") {
+      close("cancelled", "Refusé : rien n'a été modifié");
+      return { ok: true, output: { status: "cancelled_by_user", message: "L'utilisateur a refusé : rien n'a été modifié" } };
+    }
+    // Droits relus au moment d'exécuter (session révoquée ou permission retirée pendant l'attente)
+    const fresh = await this.opts.resolveSession(this.token).catch(() => null);
+    if (!fresh || fresh.userId !== this.ctx.userId || !can(fresh, "assistant:use") || tool.permissions.some((p) => !can(fresh, p))) {
+      close("failed", "Droits insuffisants : rien n'a été modifié");
+      return forbidden;
+    }
+    try {
+      const result = await tool.execute(fresh, parsed.data);
+      await audit(fresh, "assistant.action", "Assistant", null, { tool: name });
+      close("done", "C'est fait");
+      // Résultat dans son propre champ : il ne doit jamais masquer le statut « done »
+      return { ok: true, output: { status: "done", result } };
+    } catch (error) {
+      const outcome = toolError(name, error);
+      close("failed", outcome.message);
+      return outcome;
+    }
   }
 
   /** Commande de scène : arguments validés ici, exécution par le navigateur, résultat attendu 5 s au plus. */
@@ -362,6 +444,9 @@ class AssistantConnection {
       case "hangup":
         this.terminate(null, CLOSE_CODES.HANGUP, "Conversation terminée");
         break;
+      case "confirm_answer":
+        this.pendingConfirms.get(message.id)?.(message.approved ? "approved" : "rejected");
+        break;
       case "world_result": {
         const r = message.result;
         // Forme minimale contrôlée : le navigateur ne peut pas faire passer n'importe quoi pour un succès
@@ -394,6 +479,7 @@ class AssistantConnection {
     this.generation++;
     for (const t of this.timers) clearTimeout(t);
     for (const resolve of [...this.pendingWorld.values()]) resolve({ ok: false, error: "UNAVAILABLE", message: "Conversation terminée" });
+    for (const settle of [...this.pendingConfirms.values()]) settle("withdrawn");
     this.live?.close();
     this.live = null;
     this.onEnd();
