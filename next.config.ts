@@ -1,6 +1,9 @@
+import path from "node:path";
 import type { NextConfig } from "next";
 
 const isProd = process.env.NODE_ENV === "production";
+/** Build de l'application de bureau (scripts/electron/build.mjs) : serveur Node autonome embarqué par Electron. */
+const isStandalone = process.env.NEXT_OUTPUT_STANDALONE === "1";
 
 /**
  * Passerelle de l'assistant vocal : en production elle est servie sur la même origine
@@ -64,6 +67,9 @@ const apiHeaders = [
 const nextConfig: NextConfig = {
   // Dossier de build distinct pour les tests de bout en bout : ne touche pas au .next du serveur de dev
   distDir: process.env.NEXT_DIST_DIR || ".next",
+  // Sortie standalone uniquement pour le build de bureau : le build web (Vercel, next start) est inchangé.
+  // Racine de traçage fixée au projet : un package-lock.json dans un dossier parent fausserait la détection.
+  ...(isStandalone ? { output: "standalone" as const, outputFileTracingRoot: path.join(__dirname) } : {}),
   reactStrictMode: true,
   poweredByHeader: false,
   // Modules natifs / lisant leurs fichiers de données : exécutés tels quels côté serveur

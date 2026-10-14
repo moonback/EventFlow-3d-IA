@@ -29,7 +29,18 @@
     "models:build": "tsx scripts/build-models.ts",
     "assistant:gateway": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local --conditions=react-server scripts/assistant-gateway.ts",
     "assistant:dev": "tsx watch --env-file-if-exists=.env --env-file-if-exists=.env.local --conditions=react-server scripts/assistant-gateway.ts",
-    "assistant:check": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local --conditions=react-server scripts/check-live-model.ts"
+    "assistant:check": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local --conditions=react-server scripts/check-live-model.ts",
+    "electron:compile": "node scripts/electron/build.mjs --electron-only",
+    "electron:dev": "concurrently -k -s first -n next,electron -c blue,magenta \"next dev -p 3000\" \"npm run electron:compile && wait-on -t 180000 tcp:127.0.0.1:3000 && electron .\"",
+    "electron:start": "npm run electron:compile && electron .",
+    "electron:build": "node scripts/electron/build.mjs",
+    "electron:pack": "npm run electron:build && electron-builder --config electron-builder.config.cjs --dir",
+    "electron:dist": "npm run electron:build && electron-builder --config electron-builder.config.cjs --win nsis",
+    "electron:lint": "tsc -p electron/tsconfig.json && eslint electron scripts/electron tests/electron electron-builder.config.cjs playwright.electron.config.ts",
+    "electron:test": "vitest run tests/unit/electron-policy.test.ts && playwright test -c playwright.electron.config.ts",
+    "electron:verify": "node scripts/electron/verify-package.mjs",
+    "electron:smoke": "node scripts/electron/smoke-packaged.mjs",
+    "electron:icon": "node scripts/electron/make-icon.mjs"
   },
   "prisma": {
     "seed": "tsx --env-file-if-exists=.env --conditions=react-server prisma/seed.ts"
@@ -84,6 +95,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@electron/asar": "^3.4.1",
     "@eslint/eslintrc": "^3.3.7",
     "@gltf-transform/core": "^4.2.1",
     "@gltf-transform/extensions": "^4.2.1",
@@ -99,6 +111,11 @@
     "@types/three": "^0.180.0",
     "@types/ws": "^8.18.2",
     "@vitejs/plugin-react": "^6.1.2",
+    "concurrently": "^10.0.6",
+    "electron": "^44.7.2",
+    "electron-builder": "^26.15.3",
+    "electron-updater": "^6.8.9",
+    "esbuild": "^0.28.2",
     "eslint": "^9.39.5",
     "eslint-config-next": "^15.5.27",
     "meshoptimizer": "^0.22.0",
@@ -109,6 +126,8 @@
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "vite-tsconfig-paths": "^6.1.1",
-    "vitest": "^3.2.7"
-  }
+    "vitest": "^3.2.7",
+    "wait-on": "^9.5.1"
+  },
+  "main": "dist-electron/main.js"
 }

@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'" />
+    <title>EventFlow — Erreur</title>
+    <link rel="stylesheet" href="pages.css" />
+  </head>
+  <body data-page="error">
+    <main role="alert">
+      <img class="logo" src="logo.png" alt="EventFlow" />
+      <h1 id="title">EventFlow n'a pas pu démarrer</h1>
+      <p id="message"></p>
+      <div class="detail" id="detail" hidden></div>
+      <div class="actions">
+        <button class="primary" id="retry" type="button">Réessayer</button>
+        <button id="setup" type="button">Configurer le serveur</button>
+        <button id="logs" type="button">Ouvrir les journaux</button>
+      </div>
+    </main>
+    <script src="pages.js"></script>
+  </body>
+</html>

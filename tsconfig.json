@@ -34,15 +34,21 @@
   "include": [
     "**/*.ts",
     "**/*.tsx",
+    ".next-e2e/types/**/*.ts",
     ".next/types/**/*.ts",
     "next-env.d.ts",
-    ".next-e2e/types/**/*.ts"
+    ".next-desktop/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",
     ".next",
     ".next-e2e",
     "playwright-report",
-    "test-results"
+    "test-results",
+    "electron",
+    "dist-electron",
+    "build",
+    "release",
+    ".next-desktop"
   ]
 }

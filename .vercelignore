@@ -34,3 +34,12 @@ docs/
 .DS_Store
 *.log
 npm-debug.log*
+
+# Application de bureau Electron : inutile au build web
+electron/
+dist-electron/
+.next-desktop/
+build/
+release/
+electron-builder.config.cjs
+playwright.electron.config.ts

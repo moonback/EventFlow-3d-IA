@@ -1,8 +1,9 @@
 "use client";
 import { Bell, CheckCheck } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api-client";
+import { desktopBridge, notifyDesktop } from "@/lib/desktop";
 import { cn } from "@/lib/utils";
 import { Button } from "../ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/misc";
@@ -18,9 +19,18 @@ interface NotificationItem {
 
 export function NotificationsBell() {
   const [data, setData] = useState<{ unread: number; items: NotificationItem[] } | null>(null);
+  // Application de bureau : identifiants déjà connus, pour ne notifier que les nouvelles alertes
+  const seen = useRef<Set<string> | null>(null);
   const load = useCallback(async () => {
     try {
-      setData(await apiFetch("/api/notifications"));
+      const next = await apiFetch<{ unread: number; items: NotificationItem[] }>("/api/notifications");
+      setData(next);
+      if (desktopBridge()) {
+        if (seen.current) {
+          next.items.filter((n) => !n.readAt && !seen.current?.has(n.id)).slice(0, 3).forEach((n) => notifyDesktop(n));
+        }
+        seen.current = new Set([...(seen.current ?? []), ...next.items.map((n) => n.id)]);
+      }
     } catch {
       /* silencieux : la cloche n'est pas bloquante */
     }

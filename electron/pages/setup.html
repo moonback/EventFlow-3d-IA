@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'" />
+    <title>EventFlow — Configuration</title>
+    <link rel="stylesheet" href="pages.css" />
+  </head>
+  <body data-page="setup">
+    <main>
+      <img class="logo" src="logo.png" alt="EventFlow" />
+      <h1 id="title">Configurer EventFlow</h1>
+      <p id="message">Indiquez l'adresse du serveur EventFlow de votre agence.</p>
+
+      <section class="card" aria-labelledby="remote-title">
+        <h2 id="remote-title">Serveur EventFlow (recommandé)</h2>
+        <p>L'adresse communiquée par votre administrateur, par exemple https://erp.mon-agence.fr. Une connexion réseau est nécessaire.</p>
+        <form id="remote-form" novalidate>
+          <label for="server-url">Adresse du serveur</label>
+          <input id="server-url" type="url" inputmode="url" autocomplete="url" placeholder="https://erp.mon-agence.fr" required />
+          <p class="error" id="remote-error" role="alert"></p>
+          <div class="actions"><button class="primary" type="submit">Se connecter</button></div>
+        </form>
+      </section>
+
+      <section class="card" aria-labelledby="local-title">
+        <h2 id="local-title">Serveur local (poste unique)</h2>
+        <p>Exécute EventFlow sur cet ordinateur. Nécessite une base PostgreSQL et un fichier <strong>server.env</strong> (au minimum DATABASE_URL) dans le dossier de configuration.</p>
+        <p class="error" id="local-error" role="alert"></p>
+        <div class="actions">
+          <button type="button" id="use-local">Utiliser le serveur local</button>
+          <button type="button" id="open-config">Ouvrir le dossier de configuration</button>
+        </div>
+      </section>
+
+      <div class="actions"><button type="button" id="cancel" hidden>Annuler</button></div>
+    </main>
+    <script src="pages.js"></script>
+  </body>
+</html>

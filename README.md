@@ -238,6 +238,25 @@ Les données de démonstration vivent dans des organisations marquées « (démo
 | `npm run assistant:dev` · `assistant:gateway` | Passerelle WebSocket de l'assistant Eric (rechargement automatique · production) |
 | `npm run assistant:check` | Vérifie la connexion à Gemini Live (modèle, région, identifiants) par un court échange réel |
 
+## 🖥 Application de bureau Windows (Electron)
+
+EventFlow Desktop affiche **le même frontend Next.js** dans une fenêtre Windows native, installable
+avec raccourcis bureau et menu Démarrer. Il se connecte au serveur EventFlow de l'agence (HTTPS,
+recommandé) ou démarre un serveur Next.js local embarqué relié à PostgreSQL. La version web
+ci-dessus reste inchangée.
+
+| Commande | Rôle |
+|---|---|
+| `npm run electron:dev` | `next dev` + fenêtre Electron (attend le serveur, arrêt groupé) |
+| `npm run electron:build` | Build Electron + serveur Next.js standalone embarqué (`build/desktop-server`) |
+| `npm run electron:pack` | Application non installée : `release/<version>/win-unpacked/EventFlow.exe` |
+| `npm run electron:dist` | Installateur : `release/<version>/EventFlow-Setup-<version>.exe` |
+| `npm run electron:verify` · `electron:smoke` | Contenu du paquet (ressources, modèles 3D, absence de secrets) · démarrage / arrêt de l'exécutable packagé |
+| `npm run electron:lint` · `electron:test` | TypeScript + ESLint d'Electron · tests unitaires et Playwright de l'application de bureau |
+
+Architecture, sécurité, configuration du serveur, mises à jour, signature et limites (pas de mode
+hors connexion) : [docs/ELECTRON.md](docs/ELECTRON.md).
+
 ## 🏗 Architecture
 
 ```
@@ -351,6 +370,7 @@ npm run start
 | [docs/SECURITY.md](docs/SECURITY.md) | Authentification, autorisation, protections, points d'attention |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Mise en production, exploitation, sauvegardes |
 | [docs/TESTING.md](docs/TESTING.md) | Stratégie, exécution, couverture des exigences |
+| [docs/ELECTRON.md](docs/ELECTRON.md) | Application de bureau Windows : architecture, build, installateur, sécurité, mises à jour |
 | [PROGRESS.md](PROGRESS.md) | État d'avancement, limites connues, étapes restantes |
 | [ROADMAP.md](ROADMAP.md) | Vision et feuille de route vers l'ERP événementiel du futur |
 | [Suggestion.md](Suggestion.md) | 50 pistes d'évolution du monde 3D et leur état (36 réalisées) |

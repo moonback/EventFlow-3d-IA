@@ -32,3 +32,9 @@ npm-debug.log*
 .superpowers/
 .vercel
 .env*
+
+# electron (application de bureau) : sorties de build
+.next-desktop/
+dist-electron/
+/build/desktop-server/
+/release/

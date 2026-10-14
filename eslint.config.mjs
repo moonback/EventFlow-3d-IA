@@ -15,6 +15,11 @@ const config = [
       "test-results/**",
       "storage/**",
       "next-env.d.ts",
+      // Application de bureau : sorties de build et paquets générés
+      ".next-desktop/**",
+      "dist-electron/**",
+      "build/**",
+      "release/**",
     ],
   },
   ...compat.extends("next/core-web-vitals", "next/typescript"),

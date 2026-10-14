@@ -1,0 +1,44 @@
+:root {
+  color-scheme: dark;
+  --bg: oklch(0.165 0.03 262);
+  --card: oklch(0.205 0.03 262);
+  --border: oklch(0.3 0.03 262);
+  --fg: oklch(0.96 0.008 260);
+  --muted: oklch(0.72 0.02 260);
+  --primary: oklch(0.56 0.24 275);
+  --primary-hover: oklch(0.62 0.22 275);
+  --danger: oklch(0.68 0.19 25);
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font: 15px/1.5 "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  -webkit-user-select: none;
+  user-select: none;
+}
+main { width: min(560px, 100%); text-align: center; }
+img.logo { width: 220px; height: auto; margin-bottom: 8px; }
+h1 { font-size: 22px; font-weight: 600; margin: 8px 0; }
+p { color: var(--muted); margin: 6px 0; }
+.detail { font-family: Consolas, ui-monospace, monospace; font-size: 12.5px; color: var(--muted); background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-top: 14px; text-align: left; white-space: pre-wrap; word-break: break-word; -webkit-user-select: text; user-select: text; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px; margin-top: 18px; text-align: left; }
+.card h2 { font-size: 15px; margin: 0 0 4px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 18px; }
+.card .actions { justify-content: flex-start; margin-top: 12px; }
+button { font: inherit; border-radius: 8px; padding: 8px 14px; border: 1px solid var(--border); background: transparent; color: var(--fg); cursor: pointer; }
+button:hover { background: var(--border); }
+button.primary { background: var(--primary); border-color: var(--primary); color: white; }
+button.primary:hover { background: var(--primary-hover); }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--primary-hover); outline-offset: 2px; }
+input { font: inherit; width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--fg); -webkit-user-select: text; user-select: text; }
+label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
+.error { color: var(--danger); min-height: 1.5em; font-size: 13px; }
+.spinner { width: 28px; height: 28px; border-radius: 50%; border: 3px solid var(--border); border-top-color: var(--primary); margin: 18px auto 0; animation: spin 0.9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 3s; } }
+[hidden] { display: none !important; }
