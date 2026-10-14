@@ -4,6 +4,7 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { BOX, standard } from "../materials/palette";
 import { useAmbience } from "../materials/ambience";
+import { applyWind } from "./atmosphere";
 
 const noRaycast = () => null;
 
@@ -40,6 +41,7 @@ function Trees() {
     const geometry = mergeGeometries([trunk, crown, crown2])!;
     geometry.computeVertexNormals();
     const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, flatShading: true });
+    applyWind(material, 2); // le houppier ploie au vent, le tronc reste fixe
     const rand = rng(42);
     const matrices: THREE.Matrix4[] = [];
     const m = new THREE.Matrix4();

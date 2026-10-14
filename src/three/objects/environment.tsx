@@ -8,6 +8,7 @@ import { useAnimation } from "../effects/motion";
 import { BOX, CYLINDER, glow, standard } from "../materials/palette";
 import { useAmbience } from "../materials/ambience";
 import { BrandFloor, BrandSign } from "./branding";
+import { Atmosphere } from "./atmosphere";
 import { Exterior, SITE } from "./exterior";
 import { WarehouseFleet } from "./warehouse-fleet";
 import { makeLabelTexture } from "./text-texture";
@@ -191,6 +192,8 @@ export function WorldEnvironment({ realLights = false, movementsToday = 0 }: { r
       {/* Ciel étoilé la nuit, silhouette de ville au loin */}
       {(a?.night ?? 1) > 0.5 ? <Stars radius={320} depth={60} count={1800} factor={5} saturation={0} fade speed={0.4} /> : null}
       <Skyline />
+      {/* Ciel, nuages, vent, oiseaux, piétons et circulation */}
+      <Atmosphere />
       <Exterior realLights={realLights} />
       <Grid
         position={[(SITE.x0 + SITE.x1) / 2, 0.002, (SITE.z0 + SITE.z1) / 2]}

@@ -10,7 +10,7 @@ export const useMotion = () => useContext(MotionContext);
 
 // ── Choix des animations, une par une ────────────────────────────────
 
-export type AnimationKey = "flows" | "arcs" | "fleet" | "prep" | "links" | "decor" | "beacons" | "pulses" | "blink";
+export type AnimationKey = "flows" | "arcs" | "fleet" | "prep" | "links" | "decor" | "beacons" | "pulses" | "blink" | "nature" | "life";
 
 export const ANIMATIONS: { key: AnimationKey; label: string; effect: string }[] = [
   { key: "flows", label: "Flux de matériel au sol", effect: "masqués" },
@@ -22,6 +22,8 @@ export const ANIMATIONS: { key: AnimationKey; label: string; effect: string }[] 
   { key: "beacons", label: "Balises d'alerte", effect: "figées" },
   { key: "pulses", label: "Anneaux et halos pulsés", effect: "figés" },
   { key: "blink", label: "Clignotements (courrier, gyrophares)", effect: "figés" },
+  { key: "nature", label: "Vent, nuages et oiseaux", effect: "figés" },
+  { key: "life", label: "Piétons et circulation", effect: "masqués" },
 ];
 
 export type AnimationSettings = Record<AnimationKey, boolean>;

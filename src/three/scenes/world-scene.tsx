@@ -1,7 +1,7 @@
 "use client";
 import { CameraControls, ContactShadows, Environment, Lightformer, TransformControls } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Bloom, EffectComposer, Vignette } from "@react-three/postprocessing";
+import { Bloom, EffectComposer, N8AO, Vignette } from "@react-three/postprocessing";
 import { Building2, Gauge, Star, Truck, Warehouse, type LucideIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import * as THREE from "three";
@@ -325,6 +325,8 @@ function GlowEffect() {
   }, [invalidate]);
   return (
     <EffectComposer multisampling={4}>
+      {/* Occlusion ambiante : ombres de contact dans les recoins, sous les rayonnages et les véhicules */}
+      <N8AO halfRes aoRadius={2.5} distanceFalloff={1} intensity={2.2} quality="medium" />
       <Bloom mipmapBlur luminanceThreshold={1.1} luminanceSmoothing={0.25} intensity={0.9} radius={0.7} />
       <Vignette eskil={false} offset={0.25} darkness={0.55} />
     </EffectComposer>
@@ -371,7 +373,7 @@ export default function WorldScene({ data, selectedKey, highlighted, focus, edit
   const [animationSettings] = useAnimationSettings();
   const animationContext = useMemo(() => ({ settings: animationSettings, reduced: reducedMotion }), [animationSettings, reducedMotion]);
   // Rendu permanent seulement si au moins une animation continue reste active
-  const motion = effective !== "low" && !reducedMotion && (["fleet", "flows", "arcs", "decor", "beacons", "pulses"] as const).some((k) => animationSettings[k]);
+  const motion = effective !== "low" && !reducedMotion && (["fleet", "flows", "arcs", "decor", "beacons", "pulses", "nature", "life"] as const).some((k) => animationSettings[k]);
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   const hoverCardRef = useRef<HTMLDivElement>(null);
   const hovered = hoveredKey && hoveredKey !== selectedKey && !editMode && !walk ? (data.items.find((i) => i.key === hoveredKey) ?? null) : null;
