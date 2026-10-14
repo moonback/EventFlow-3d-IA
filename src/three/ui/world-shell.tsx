@@ -21,6 +21,9 @@ import type { PresenceUser } from "../objects/presence";
 import { LayoutHistory } from "./layout-history";
 import { decodeView, ViewBookmarks } from "./view-bookmarks";
 import { AnimationsMenu } from "./animations-menu";
+import { useAssistant } from "@/assistant/use-assistant";
+import { AssistantPanel } from "./assistant-panel";
+import { createWorldBridge, ERIC_HOME, type EricSpot, type WorldBridgeDeps } from "./world-bridge";
 import { Plan2D } from "./plan-2d";
 import { LIGHTING_LABELS, QUALITY_LABELS, useLighting, useQuality, type Lighting, type Quality } from "./quality";
 import { ScenePanel } from "./scene-panel";
@@ -62,7 +65,7 @@ function nextCode(code: string, used: Set<string>) {
   return `${code}-${Date.now() % 10000}`;
 }
 
-export function WorldShell({ canEditLayout, canCount, canDuplicate, locations }: { canEditLayout: boolean; canCount: boolean; canDuplicate: boolean; locations: { value: string; label: string }[] }) {
+export function WorldShell({ canEditLayout, canCount, canDuplicate, assistant = false, locations }: { canEditLayout: boolean; canCount: boolean; canDuplicate: boolean; assistant?: boolean; locations: { value: string; label: string }[] }) {
   const params = useSearchParams();
   const [data, setData] = useState<SceneData | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -191,6 +194,20 @@ export function WorldShell({ canEditLayout, canCount, canDuplicate, locations }:
     return () => window.removeEventListener("keydown", onKey);
   }, [walk]);
 
+  /** Localise un matériel : emplacements mis en évidence, chemin depuis l'entrée, vue de l'entrepôt. */
+  const locate = useCallback(
+    async (q: string) => {
+      const results = await apiFetch<{ id: string; name: string; sku: string; locations: { id: string; code: string; kind: string; quantity: number }[] }[]>(`/api/inventory/search?q=${encodeURIComponent(q)}`);
+      const keys = new Set(results.flatMap((r) => r.locations.map((l) => `STOCK_LOCATION:${l.id}`)).filter((k) => data?.items.some((i) => i.key === k)));
+      setHighlighted(keys);
+      setRouteKey(keys.size ? [...keys][0]! : null);
+      // Vue de l'entrepôt pour voir tout le chemin depuis l'entrée jusqu'au premier emplacement
+      if (keys.size) setFocus({ kind: "zone", zone: "WAREHOUSE" });
+      return { product: results[0]?.name ?? null, locations: keys.size };
+    },
+    [data],
+  );
+
   const search = async () => {
     const q = query.trim();
     if (!q) {
@@ -199,22 +216,64 @@ export function WorldShell({ canEditLayout, canCount, canDuplicate, locations }:
     }
     setSearching(true);
     try {
-      const results = await apiFetch<{ id: string; name: string; sku: string; locations: { id: string; code: string; kind: string; quantity: number }[] }[]>(`/api/inventory/search?q=${encodeURIComponent(q)}`);
-      const keys = new Set(results.flatMap((r) => r.locations.map((l) => `STOCK_LOCATION:${l.id}`)).filter((k) => data?.items.some((i) => i.key === k)));
-      setHighlighted(keys);
-      setRouteKey(keys.size ? [...keys][0]! : null);
-      if (keys.size === 0) toast.info(results.length ? "Matériel trouvé mais hors des emplacements représentés (sorti ou en zone système)" : "Aucune référence trouvée");
-      else {
-        // Vue de l'entrepôt pour voir tout le chemin depuis l'entrée jusqu'au premier emplacement
-        setFocus({ kind: "zone", zone: "WAREHOUSE" });
-        toast.success(`${results[0]!.name} : ${keys.size} emplacement(s) mis en évidence — suivez le chemin depuis l'entrée`);
-      }
+      const r = await locate(q);
+      if (r.locations === 0) toast.info(r.product ? "Matériel trouvé mais hors des emplacements représentés (sorti ou en zone système)" : "Aucune référence trouvée");
+      else toast.success(`${r.product} : ${r.locations} emplacement(s) mis en évidence — suivez le chemin depuis l'entrée`);
     } catch (e) {
       toast.error(errorMessage(e));
     } finally {
       setSearching(false);
     }
   };
+
+  // ── Assistant Eric : pont vers la scène (état lu au moment de chaque commande) ──
+  const [ericSpot, setEricSpot] = useState<EricSpot>(ERIC_HOME);
+  const [ericOpen, setEricOpen] = useState(false);
+  const simulateLoading = useCallback(async (item: SceneItem) => {
+    const d = await apiFetch<{ loadingPlan?: { event: string; steps: { step: number; name: string; quantity: number; volume: number | null; color?: string | null; zone: string }[] } | null }>(`/api/scene/objects/VEHICLE/${item.businessId}`);
+    const plan = d.loadingPlan;
+    if (!plan?.steps.length) return null;
+    setSelectedKey(item.key);
+    setFocus({ kind: "item", key: item.key });
+    setLoadingSim({ vehicleKey: item.key, event: plan.event, step: 0, steps: plan.steps.map((s) => ({ step: s.step, name: s.name, quantity: s.quantity, volume: s.volume, color: s.color ?? null, zone: s.zone })) });
+    setSimPlaying(true);
+    return plan.event;
+  }, []);
+  const bridgeDeps = useRef<WorldBridgeDeps | null>(null);
+  bridgeDeps.current = {
+    getState: () => ({ data, mode, overlay, selectedKey, webgl: Boolean(webgl?.supported) && !sceneError, walk, editMode, siteEditor }),
+    select: (key) => select(key),
+    setFocus,
+    setHighlighted,
+    setMode,
+    setOverlay,
+    locate,
+    startMeeting,
+    simulateLoading,
+    moveEric: setEricSpot,
+  };
+  const worldBridge = useMemo(() => createWorldBridge({
+    getState: () => bridgeDeps.current!.getState(),
+    select: (key) => bridgeDeps.current!.select(key),
+    setFocus: (f) => bridgeDeps.current!.setFocus(f),
+    setHighlighted: (k) => bridgeDeps.current!.setHighlighted(k),
+    setMode: (m) => bridgeDeps.current!.setMode(m),
+    setOverlay: (o) => bridgeDeps.current!.setOverlay(o),
+    locate: (q) => bridgeDeps.current!.locate(q),
+    startMeeting: (id) => bridgeDeps.current!.startMeeting(id),
+    simulateLoading: (item) => bridgeDeps.current!.simulateLoading(item),
+    moveEric: (spot) => bridgeDeps.current!.moveEric(spot),
+  }), []);
+  const eric = useAssistant(assistant ? worldBridge : undefined, () => void load());
+  // Une action proposée par Eric doit être visible pour être confirmée : le panneau s'ouvre
+  const pendingConfirmations = eric.confirmations.filter((c) => !c.outcome).length;
+  useEffect(() => {
+    if (pendingConfirmations) setEricOpen(true);
+  }, [pendingConfirmations]);
+  const ericInScene = useMemo(
+    () => (assistant ? { spot: ericSpot, status: eric.status, thinking: eric.activity !== null, level: eric.voiceLevel, onClick: () => setEricOpen((o) => !o) } : null),
+    [assistant, ericSpot, eric.status, eric.activity, eric.voiceLevel],
+  );
 
   // ── Agencement : modifications en attente, annulation, rotation, duplication ──
   const placementOf = useCallback((item: SceneItem): Placement => pending.get(item.key) ?? { position: item.position, rotationY: item.rotationY }, [pending]);
@@ -495,6 +554,7 @@ export function WorldShell({ canEditLayout, canCount, canDuplicate, locations }:
                 meeting={meeting}
                 presence={presence}
                 cameraProbe={cameraProbe}
+                eric={ericInScene}
               />
             </SceneErrorBoundary>
           ) : (
@@ -745,6 +805,9 @@ export function WorldShell({ canEditLayout, canCount, canDuplicate, locations }:
               {editMode ? <span className="text-warning">Mode agencement : sélectionnez un objet puis faites-le glisser · R : tourner · Ctrl+Z : annuler</span> : null}
             </div>
           ) : null}
+
+          {/* Assistant vocal Eric (masqué pendant l'édition du plan du site) */}
+          {assistant && !siteEditor ? <AssistantPanel assistant={eric} open={ericOpen} onOpenChange={setEricOpen} /> : null}
         </div>
 
         {selected ? (

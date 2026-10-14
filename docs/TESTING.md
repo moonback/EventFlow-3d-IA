@@ -23,6 +23,15 @@ au premier démarrage du conteneur PostgreSQL (sinon : `createdb eventflow_test`
 Playwright utilise Chromium avec rendu WebGL logiciel (SwiftShader) pour tester la scène 3D
 sans GPU.
 
+### Assistant vocal Eric
+
+- Vitest : `tests/unit/assistant*.test.ts`, `tests/integration/assistant-*.test.ts` (passerelle
+  avec un faux Gemini, outils sur la vraie base, confirmations).
+- Playwright : `tests/e2e/assistant.spec.ts` lance la vraie passerelle avec un Gemini scripté
+  (`tests/e2e/fake-gemini-gateway.ts`, port E2E + 1). Le build E2E est écrit dans `.next-e2e`
+  (`NEXT_DIST_DIR`) : il n'écrase pas le `.next` d'un serveur de développement en cours.
+- Vérification réelle du modèle (coût : un échange) : `npm run assistant:check`.
+
 ## Couverture des exigences
 
 | Exigence | Test(s) |

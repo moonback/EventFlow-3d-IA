@@ -3,6 +3,18 @@ import type { NextConfig } from "next";
 const isProd = process.env.NODE_ENV === "production";
 
 /**
+ * Passerelle de l'assistant vocal : en production elle est servie sur la même origine
+ * (/ws/assistant, couvert par 'self') ; en développement elle écoute un autre port, déclaré ici.
+ */
+function assistantSocketOrigin() {
+  const url = process.env.NEXT_PUBLIC_ASSISTANT_WS_URL;
+  if (!url) return "";
+  const { protocol, host } = new URL(url);
+  if (protocol !== "ws:" && protocol !== "wss:") throw new Error("NEXT_PUBLIC_ASSISTANT_WS_URL doit commencer par ws:// ou wss://");
+  return ` ${protocol}//${host}`;
+}
+
+/**
  * En-têtes de sécurité. La CSP autorise 'unsafe-inline' pour les scripts car Next.js injecte des
  * scripts d'hydratation inline (une CSP à nonce est possible via le middleware si nécessaire),
  * et 'unsafe-eval' uniquement en développement (Fast Refresh). 'wasm-unsafe-eval' autorise seulement
@@ -14,7 +26,7 @@ const cspDirectives = (frameAncestors: string) => [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self' data:",
-  "connect-src 'self'",
+  `connect-src 'self'${assistantSocketOrigin()}`,
   "worker-src 'self' blob:",
   `frame-ancestors ${frameAncestors}`,
   "base-uri 'self'",
@@ -26,7 +38,8 @@ const csp = cspDirectives("'none'");
 const commonHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=()" },
+  // Micro : uniquement pour l'application elle-même (assistant vocal Eric), jamais pour un cadre tiers
+  { key: "Permissions-Policy", value: "camera=(), microphone=(self), geolocation=(), payment=()" },
   { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
   ...(isProd ? [{ key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" }] : []),
 ];
@@ -49,6 +62,8 @@ const apiHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // Dossier de build distinct pour les tests de bout en bout : ne touche pas au .next du serveur de dev
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   reactStrictMode: true,
   poweredByHeader: false,
   // Modules natifs / lisant leurs fichiers de données : exécutés tels quels côté serveur

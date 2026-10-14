@@ -23,6 +23,19 @@ const envSchema = z.object({
   S3_ACCESS_KEY_ID: z.string().optional(),
   S3_SECRET_ACCESS_KEY: z.string().optional(),
   S3_FORCE_PATH_STYLE: z.enum(["true", "false"]).default("true"),
+  // Assistant vocal « Eric » (Gemini Live sur Gemini Enterprise Agent Platform, identifiants Google Cloud via ADC)
+  ASSISTANT_ENABLED: z.enum(["true", "false"]).default("false"),
+  // "enterprise" : Gemini Enterprise Agent Platform (ADC, région GOOGLE_CLOUD_LOCATION) ;
+  // "developer" : Gemini API avec GEMINI_API_KEY (essais en local, sans garantie de résidence des données)
+  GEMINI_BACKEND: z.enum(["enterprise", "developer"]).default("enterprise"),
+  GEMINI_API_KEY: z.string().optional(),
+  GOOGLE_CLOUD_PROJECT: z.string().optional(),
+  GOOGLE_CLOUD_LOCATION: z.string().default("eu"),
+  GEMINI_LIVE_MODEL: z.string().default("gemini-3.8-live"),
+  GEMINI_LIVE_VOICE: z.string().optional(),
+  ASSISTANT_GATEWAY_PORT: z.coerce.number().int().min(1).max(65535).default(3001),
+  ASSISTANT_MAX_SESSION_MINUTES: z.coerce.number().int().min(1).max(240).default(30),
+  ASSISTANT_IDLE_SECONDS: z.coerce.number().int().min(15).max(3600).default(120),
 });
 
 export type ServerEnv = z.infer<typeof envSchema>;

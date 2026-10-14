@@ -4,16 +4,17 @@
 
 **L'ERP/CRM des agences événementielles, avec un jumeau numérique 3D de l'activité.**
 
-Clients · Événements · Stock en temps réel · Logistique · Véhicules · Équipes · Devis & factures · Rentabilité · Monde 3D
+Clients · Événements · Stock en temps réel · Logistique · Véhicules · Équipes · Devis & factures · Rentabilité · Monde 3D · Assistant vocal
 
 ![Next.js](https://img.shields.io/badge/Next.js-15-black?logo=nextdotjs)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169e1?logo=postgresql&logoColor=white)
 ![Prisma](https://img.shields.io/badge/Prisma-6-2d3748?logo=prisma)
 ![Three.js](https://img.shields.io/badge/Three.js-R3F-000?logo=threedotjs)
-![Tests](https://img.shields.io/badge/tests-64%20unitaires%2Fint%C3%A9gration%20%2B%2019%20E2E-success)
+![Gemini Live](https://img.shields.io/badge/Gemini-3.8%20Live-4285f4?logo=googlegemini&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-199%20unitaires%2Fint%C3%A9gration%20%2B%2019%20E2E-success)
 
-[Captures](#-captures-décran) · [Fonctionnalités](#-fonctionnalités) · [Démarrage rapide](#-démarrage-rapide) · [Architecture](#-architecture) · [Sécurité](#-sécurité) · [Tests](#-tests) · [Documentation](#-documentation) · [Roadmap](ROADMAP.md)
+[Captures](#-captures-décran) · [Fonctionnalités](#-fonctionnalités) · [Assistant Eric](#-assistant-vocal-eric) · [Démarrage rapide](#-démarrage-rapide) · [Architecture](#-architecture) · [Sécurité](#-sécurité) · [Tests](#-tests) · [Documentation](#-documentation) · [Roadmap](ROADMAP.md)
 
 </div>
 
@@ -36,6 +37,10 @@ Client → Devis → Événement → Réservation → Préparation → Départ �
 représentés dans un monde 3D relié aux données réelles, intégré dès la page d'accueil. Cliquer sur
 un rayonnage montre son contenu exact ; cliquer sur un camion montre son chargement et sa mission ;
 s'asseoir à la table de réunion affiche le dossier complet d'un événement.
+
+Et on peut **lui parler** : Eric, le régisseur virtuel, répond à la voix en temps réel à partir des
+données de l'agence, montre dans la 3D ce dont il parle et propose des modifications que
+l'utilisateur confirme d'un clic.
 
 > **Statut** : version fonctionnelle complète, testée (intégration + navigateur), non encore
 > déployée en production. Voir [PROGRESS.md](PROGRESS.md) pour l'état précis et les limites.
@@ -86,7 +91,8 @@ s'asseoir à la table de réunion affiche le dossier complet d'un événement.
 | **Pilotage** | Accueil « cockpit » : vue 3D du site, événements à venir, tâches urgentes, indicateurs clés avec courbes, calendrier, activité récente ; blocs personnalisables, notifications, recherche globale `Ctrl/⌘ K` |
 | **Données** | Import CSV avec aperçu et rapport d'erreurs, exports CSV sécurisés, documents avec contrôle des droits |
 | **Monde 3D** | Jumeau numérique du site relié aux données réelles : entrepôt, bureaux, logistique, frise des événements, centre de contrôle ; panneau contextuel et actions métier, visite à pied, mur d'écrans, présence des collègues, **plan 2D de secours** (détails ci-dessous) |
-| **Organisation** | Multi-organisation, 11 rôles, 45 permissions personnalisables, journal d'audit, invitations |
+| **Assistant vocal** | **Eric**, régisseur virtuel présent dans le monde 3D : conversation vocale en temps réel (Gemini Live), réponses tirées des données réelles dans la limite des droits, pilotage de la scène, actions confirmées par un clic (détails ci-dessous) |
+| **Organisation** | Multi-organisation, 11 rôles, 46 permissions personnalisables, journal d'audit, invitations |
 
 ### Le monde 3D, en pratique
 
@@ -124,6 +130,54 @@ masquée ou figée), mémorisés dans le navigateur ; le réglage système « r�
   plan 2D accessible : aucune fonctionnalité n'est perdue.
 - Aucune ressource externe : modèles 3D générés par le projet (`npm run models:build`, compression
   Meshopt), géographie des missions intégrée, reflets d'ambiance générés localement.
+
+## 🎙 Assistant vocal Eric
+
+Dans **Mon univers 3D**, le bouton **Parler à Eric** (ou un clic sur le personnage) ouvre une
+conversation en temps réel avec Eric, un régisseur virtuel avec casque-micro qui se tient dans la
+salle de contrôle. On lui parle au micro ou on lui écrit ; on peut lui couper la parole à tout moment.
+
+| Capacité | En pratique |
+|---|---|
+| **Converser** | Voix naturelle en français (Gemini Live `gemini-3.8-live`), transcription en direct, saisie au clavier dans la même conversation, reconnexion automatique |
+| **Consulter** | 23 outils en lecture : événements et leur dossier, stock et emplacements, disponibilité sur une période, réservations, logistique, véhicules, équipe et planning, clients, devis, factures, finances, tâches, maintenance, notifications. Réponses à l'oral, heures dans le fuseau de l'agence |
+| **Montrer** | 9 commandes de scène : cadrer un véhicule, un rayonnage ou un événement et ouvrir sa fiche, aller à une zone, mettre en évidence, localiser un matériel avec son chemin, changer de vue ou de calque, glisser sur la frise, ouvrir une réunion, jouer un plan de chargement. Eric marche jusqu'à l'objet et le désigne |
+| **Agir** | Changer le statut d'un événement, ajouter une note, créer une tâche, transférer du matériel — **uniquement après un clic sur « Confirmer »** sur une carte qui décrit l'action |
+
+L'anneau au sol indique son état : gris au repos, bleu à l'écoute, ambre pendant une
+consultation, vert quand il parle ; sa bouche suit le rythme de sa voix.
+
+**Garde-fous** :
+
+- Eric ne voit **jamais plus que l'utilisateur** : chaque outil vérifie les permissions, puis les
+  services métier les revérifient et filtrent par organisation. Une question sur les finances posée
+  par un profil sans `finance:read` reçoit un refus poli.
+- Aucune modification sans clic : la carte de confirmation est construite **à partir de la base**,
+  pas des paroles du modèle ; une proposition retirée, interrompue ou expirée (60 s) n'est jamais
+  exécutée, et les droits sont relus au moment d'agir. L'annulation d'un événement reste réservée
+  à sa fiche.
+- Les textes renvoyés par les outils sont traités comme des données, jamais comme des consignes.
+- Chaque action est auditée et chaque appel d'outil journalisé (outil, succès, durée — sans le
+  contenu). La voix et les messages sont transmis à Google Gemini (mention affichée au premier usage).
+
+**Activer Eric** (désactivé par défaut) :
+
+```bash
+# .env.local
+ASSISTANT_ENABLED="true"
+GEMINI_BACKEND="developer"          # essais : clé GEMINI_API_KEY (variable d'environnement)
+NEXT_PUBLIC_ASSISTANT_WS_URL="ws://localhost:3001/ws/assistant"
+```
+
+```bash
+npm run assistant:check             # vérifie le modèle et les identifiants (un court échange)
+npm run assistant:dev               # passerelle WebSocket (port 3001)
+npm run dev                         # application (port 3000)
+```
+
+En production, utiliser `GEMINI_BACKEND="enterprise"` (Gemini Enterprise Agent Platform,
+identifiants Google Cloud du serveur, région `eu`) et router `/ws/assistant` vers la passerelle
+sur la même origine : voir [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#assistant-vocal-eric-optionnel).
 
 ## 🚀 Démarrage rapide
 
@@ -172,7 +226,7 @@ Les données de démonstration vivent dans des organisations marquées « (démo
 | `npm run dev` · `build` · `start` | Développement, build de production, serveur de production |
 | `npm run lint` · `typecheck` | ESLint, vérification TypeScript stricte |
 | `npm test` | Tests unitaires et d'intégration (base `eventflow_test` recréée à chaque exécution) |
-| `npm run test:e2e` | Tests navigateur Playwright (base `eventflow_e2e`, build + serveur sur le port 3100) |
+| `npm run test:e2e` | Tests navigateur Playwright (base `eventflow_e2e`, build dans `.next-e2e` + serveur sur le port 3100, passerelle de l'assistant simulée sur le port 3101) |
 | `npm run db:migrate` | Créer une migration (développement) |
 | `npm run db:deploy` | Appliquer les migrations (production, non destructif) |
 | `npm run db:seed` · `db:seed:reset` | Données de démonstration (refusé en production) |
@@ -181,19 +235,26 @@ Les données de démonstration vivent dans des organisations marquées « (démo
 | `npm run stock:reconcile` | Contrôle des soldes de stock face au journal des mouvements |
 | `npm run db:studio` | Explorateur de base Prisma Studio |
 | `npm run models:build` | Régénère les modèles 3D détaillés (`public/models/*.glb`) |
+| `npm run assistant:dev` · `assistant:gateway` | Passerelle WebSocket de l'assistant Eric (rechargement automatique · production) |
+| `npm run assistant:check` | Vérifie la connexion à Gemini Live (modèle, région, identifiants) par un court échange réel |
 
 ## 🏗 Architecture
 
 ```
 ┌──────────── Navigateur ────────────┐
 │ Pages serveur (RSC) · Formulaires  │      ┌────────────── Serveur Next.js ──────────────┐
-│ Tableaux · Graphiques · Monde 3D   │─────▶│ ~135 routes API  →  apiHandler               │
-└────────────────────────────────────┘ JSON │   origine · session · permissions · Zod      │
-                                            │ Services métier (transactions, verrous)      │
-                                            │ PDF · e-mail · stockage · audit              │
-                                            └──────────────┬──────────────────────────────┘
-                                                           ▼
-                                PostgreSQL 16 (58 modèles, contraintes CHECK, triggers)
+│ Tableaux · Graphiques · Monde 3D   │─────▶│ ~145 routes API  →  apiHandler               │
+│                                    │ JSON │   origine · session · permissions · Zod      │
+│ Assistant Eric (micro, voix)       │      │ Services métier (transactions, verrous)      │
+└──────────────┬─────────────────────┘      │ PDF · e-mail · stockage · audit              │
+               │ WebSocket                  └──────────────┬──────────────────────────────┘
+               ▼                                           │
+┌──── Passerelle /ws/assistant ─────┐  mêmes services      │
+│ session · droits · outils         │──────────────────────┤
+│ confirmations · audit             │                      ▼
+└──────────────┬────────────────────┘   PostgreSQL 16 (62 modèles, contraintes CHECK, triggers)
+               ▼ WebSocket
+     Gemini Live (gemini-3.8-live)
 ```
 
 | Couche | Technologies |
@@ -201,6 +262,7 @@ Les données de démonstration vivent dans des organisations marquées « (démo
 | Interface | Next.js 15 App Router, React 19, Tailwind CSS 4, composants style shadcn/ui (Radix), TanStack Table, Recharts, React Hook Form + Zod |
 | 3D | Three.js, React Three Fiber, Drei, postprocessing — modèles glTF (Meshopt), rendu à la demande ou continu selon la qualité, chargement différé, repli SVG |
 | Serveur | Route handlers Next.js, services métier typés, pdfkit, Nodemailer, AWS SDK (S3) |
+| Assistant | Passerelle Node (`ws`) séparée de Next.js, `@google/genai` (Gemini Live), AudioWorklet (PCM 16 kHz → 24 kHz) |
 | Données | PostgreSQL 16, Prisma 6, decimal.js pour l'argent, `@date-fns/tz` pour les fuseaux |
 | Qualité | TypeScript strict, ESLint, Prettier, Vitest, Playwright |
 
@@ -210,11 +272,12 @@ src/
 ├── server/         Auth, apiHandler, services métier, PDF, e-mail, stockage, audit
 ├── features/       Schémas Zod et composants par domaine
 ├── components/     UI de base, tableaux, formulaires, graphiques, navigation
-├── three/          Monde 3D : objets, ambiance, effets, scène, plan 2D, panneau, réglages
+├── three/          Monde 3D : objets, ambiance, effets, scène, plan 2D, panneau, réglages, avatar d'Eric
+├── assistant/      Client de l'assistant : micro, lecteur audio, hook de conversation
 └── lib/            Argent, dates, permissions, libellés, erreurs
 prisma/             Schéma, migrations SQL (dont triggers), seed
 public/models/      Modèles 3D générés (camion, fourgon, chariot, lyre, flight case)
-scripts/            Création d'organisation, alertes, réconciliation du stock, génération des modèles 3D
+scripts/            Création d'organisation, alertes, réconciliation du stock, modèles 3D, passerelle de l'assistant
 tests/              unit · integration · e2e
 docs/               Documentation technique et métier
 ```
@@ -232,6 +295,9 @@ Détails : [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - Intégrité garantie **en base** : journal de stock en ajout seul, factures émises immuables,
   soldes jamais négatifs.
 - Aucun compte administrateur par défaut, aucun secret dans le dépôt.
+- Assistant Eric : passerelle authentifiée par la session avec contrôle d'origine, permission
+  `assistant:use`, outils soumis aux mêmes droits que l'utilisateur, **aucune écriture sans clic
+  de confirmation**, identifiants Google uniquement côté serveur.
 
 Détails et points d'attention avant production : [docs/SECURITY.md](docs/SECURITY.md).
 
@@ -239,10 +305,13 @@ Détails et points d'attention avant production : [docs/SECURITY.md](docs/SECURI
 
 | Suite | Contenu | Résultat |
 |---|---|---|
-| Unitaires et intégration (Vitest, vraie base PostgreSQL) | Disponibilité, argent, ordre de chargement, course du soleil, points de vue ; isolation, permissions, réservations concurrentes, stock, planification, devis/factures, documents, imports | ✅ 64/64 |
+| Unitaires et intégration (Vitest, vraie base PostgreSQL) | Disponibilité, argent, ordre de chargement, course du soleil, points de vue ; isolation, permissions, réservations concurrentes, stock, planification, devis/factures, documents, imports ; assistant Eric : passerelle (faux Gemini), chaque outil sur la vraie base, commandes de scène, parcours de confirmation | ✅ 199/199 |
 | Navigateur (Playwright, build de production) | Authentification, droits, 29 pages, parcours client → événement → réservation ; monde 3D : panneau, repli sans WebGL, clavier, temps de première image, versions d'agencement, présence, carte et plan de chargement, bureau, points de vue | ✅ 19/19 |
+| Assistant de bout en bout (Playwright, Gemini scripté) | Action refusée sans effet, action confirmée exécutée, véhicule montré dans la scène | ⏳ 3 tests écrits, pas encore exécutés |
 
 Les suites refusent de s'exécuter sur une base dont le nom ne contient pas `test` ou `e2e`.
+L'assistant a aussi été vérifié avec le vrai Gemini Live sur les données de démonstration
+(`npm run assistant:check`, conversations comparées à la base).
 Couverture détaillée des exigences : [docs/TESTING.md](docs/TESTING.md).
 
 ## ⚙️ Configuration
@@ -255,6 +324,7 @@ Toutes les variables sont décrites dans [`.env.example`](.env.example) :
 | E-mail | `MAIL_DRIVER` (`file` · `smtp` · `disabled`), `MAIL_FROM`, `SMTP_*` |
 | Fichiers | `STORAGE_DRIVER` (`local` · `s3`), `STORAGE_LOCAL_DIR`, `UPLOAD_MAX_MB`, `S3_*` |
 | Démonstration | `DEMO_PASSWORD`, `ALLOW_DEMO_SEED` — **jamais en production** |
+| Assistant Eric | `ASSISTANT_ENABLED`, `GEMINI_BACKEND` (`enterprise` · `developer`), `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`, `GEMINI_API_KEY`, `GEMINI_LIVE_MODEL`, `GEMINI_LIVE_VOICE`, `ASSISTANT_GATEWAY_PORT`, `ASSISTANT_MAX_SESSION_MINUTES`, `ASSISTANT_IDLE_SECONDS`, `NEXT_PUBLIC_ASSISTANT_WS_URL` (développement uniquement) |
 
 ## 🚢 Déploiement
 
@@ -275,7 +345,7 @@ npm run start
 
 | Document | Contenu |
 |---|---|
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Couches, conventions, fonctionnement du monde 3D |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Couches, conventions, fonctionnement du monde 3D et de l'assistant Eric |
 | [docs/DATABASE.md](docs/DATABASE.md) | Modèle de données, contraintes, triggers, numérotation |
 | [docs/BUSINESS_RULES.md](docs/BUSINESS_RULES.md) | Disponibilité, réservations, logistique, devis/factures, formules de rentabilité |
 | [docs/SECURITY.md](docs/SECURITY.md) | Authentification, autorisation, protections, points d'attention |
@@ -284,6 +354,7 @@ npm run start
 | [PROGRESS.md](PROGRESS.md) | État d'avancement, limites connues, étapes restantes |
 | [ROADMAP.md](ROADMAP.md) | Vision et feuille de route vers l'ERP événementiel du futur |
 | [Suggestion.md](Suggestion.md) | 50 pistes d'évolution du monde 3D et leur état (36 réalisées) |
+| [Plan de l'assistant Eric](docs/superpowers/plans/2026-10-14-assistant-vocal-eric.md) | Conception, étapes livrées, limites et points restant à vérifier |
 
 ## 🤝 Contribuer
 

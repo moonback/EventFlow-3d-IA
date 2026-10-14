@@ -110,6 +110,7 @@ model Organization {
   notificationPrefs   NotificationPreference[]
   importJobs          ImportJob[]
   opportunities       Opportunity[]
+  assistantToolCalls  AssistantToolCall[]
 }
 
 model User {
@@ -123,17 +124,18 @@ model User {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  memberships       Membership[]
-  sessions          Session[]
-  resetTokens       PasswordResetToken[]
-  notifications     Notification[]
-  notificationPrefs NotificationPreference[]
-  staffProfiles     StaffMember[]
-  auditLogs         AuditLog[]               @relation("AuditActor")
-  movements         StockMovement[]
-  managedEvents     Event[]                  @relation("EventManager")
-  opportunities     Opportunity[]            @relation("OpportunityOwner")
-  invitationsSent   Invitation[]             @relation("InvitationSender")
+  memberships        Membership[]
+  sessions           Session[]
+  resetTokens        PasswordResetToken[]
+  notifications      Notification[]
+  notificationPrefs  NotificationPreference[]
+  staffProfiles      StaffMember[]
+  auditLogs          AuditLog[]               @relation("AuditActor")
+  movements          StockMovement[]
+  managedEvents      Event[]                  @relation("EventManager")
+  opportunities      Opportunity[]            @relation("OpportunityOwner")
+  invitationsSent    Invitation[]             @relation("InvitationSender")
+  assistantToolCalls AssistantToolCall[]
 }
 
 model Membership {
@@ -240,6 +242,23 @@ model AuditLog {
 
   @@index([organizationId, createdAt])
   @@index([organizationId, entityType, entityId])
+}
+
+/// Journal des outils consultés par l'assistant vocal Eric : ni audio, ni arguments, ni réponses
+/// (uniquement l'outil, le résultat et la durée), pour l'observabilité et les quotas.
+model AssistantToolCall {
+  id             String       @id @default(cuid())
+  organizationId String
+  userId         String
+  tool           String
+  ok             Boolean
+  errorCode      String?
+  durationMs     Int
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
 }
 
 enum NotificationType {

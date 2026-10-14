@@ -5,10 +5,11 @@ import { cache } from "react";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import { UnauthorizedError } from "@/lib/errors";
-import { loadAuthContext, type AuthContext } from "./context";
+import type { AuthContext } from "./context";
+import { resolveSessionToken, SESSION_COOKIE } from "./session-token";
 import { generateToken, hashToken } from "./tokens";
 
-export const SESSION_COOKIE = "ef_session";
+export { SESSION_COOKIE, resolveSessionToken };
 
 export async function createSession(params: {
   userId: string;
@@ -45,30 +46,6 @@ export async function setSessionCookie(token: string, expiresAt: Date) {
 export async function clearSessionCookie() {
   const store = await cookies();
   store.delete(SESSION_COOKIE);
-}
-
-/** Résout une session à partir du jeton en clair (cookie). */
-export async function resolveSessionToken(token: string): Promise<AuthContext | null> {
-  const session = await db.session.findUnique({
-    where: { tokenHash: hashToken(token) },
-    select: { id: true, userId: true, organizationId: true, expiresAt: true, lastSeenAt: true },
-  });
-  if (!session) return null;
-  if (session.expiresAt.getTime() <= Date.now()) {
-    await db.session.delete({ where: { id: session.id } }).catch(() => undefined);
-    return null;
-  }
-  try {
-    const ctx = await loadAuthContext(session.userId, session.organizationId, session.id);
-    // Mise à jour de l'activité au plus toutes les 5 minutes
-    if (Date.now() - session.lastSeenAt.getTime() > 5 * 60_000) {
-      await db.session.update({ where: { id: session.id }, data: { lastSeenAt: new Date() } }).catch(() => undefined);
-    }
-    return ctx;
-  } catch (error) {
-    if (error instanceof UnauthorizedError) return null;
-    throw error;
-  }
 }
 
 async function clientIp(): Promise<string | null> {

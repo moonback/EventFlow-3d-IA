@@ -85,6 +85,25 @@
   refusé en production sauf `ALLOW_DEMO_SEED=true`, mot de passe fourni par `DEMO_PASSWORD`
   (aucun mot de passe connu dans le code).
 
+## Assistant vocal Eric
+
+- Passerelle WebSocket authentifiée par le cookie de session, origine contrôlée (`APP_URL`),
+  permission `assistant:use` (refusée au rôle lecture seule), session revalidée pendant la
+  conversation, une conversation par utilisateur. Les identifiants Google ne quittent pas le
+  serveur ; la voix et les messages sont transmis à Gemini (région `eu` en production).
+- **Lecture** : chaque outil vérifie ses permissions, puis les services revérifient et filtrent
+  par organisation ; Eric ne voit jamais plus que l'utilisateur. Les textes renvoyés par les
+  outils sont traités comme des données (consigne explicite au modèle).
+- **Écriture** (statut d'événement hors annulation, note, tâche, transfert de stock) : jamais sans
+  un clic « Confirmer » de l'utilisateur. L'aperçu affiché est construit depuis la base, pas à
+  partir du texte du modèle. Une proposition retirée par le modèle, interrompue par une reprise
+  de session ou expirée (60 s) n'est jamais exécutée, même si un clic arrive ensuite ; les droits
+  sont relus au moment d'exécuter ; 3 propositions en attente au plus. Chaque action est
+  auditée (`assistant.action` + l'audit du service) et chaque appel d'outil journalisé dans
+  `AssistantToolCall` (outil, succès, durée — ni arguments ni contenu).
+- Le navigateur ne peut renvoyer à la passerelle que des résultats de scène bornés (8 Ko) avec
+  des codes d'erreur connus, et des réponses de confirmation pour des propositions en attente.
+
 ## Points d'attention pour la production
 
 - Placer l'application derrière un proxy inverse HTTPS qui **remplace** l'en-tête

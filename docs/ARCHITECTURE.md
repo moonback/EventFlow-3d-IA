@@ -71,3 +71,50 @@ Tâche planifiée ── POST /api/jobs/alerts (CRON_SECRET) ──────�
 - Repli : le plan SVG `Plan2D` affiche les mêmes objets (accessible au clavier). Il est utilisé
   en mode « Plan », si WebGL est absent, si la scène lève une erreur (ErrorBoundary) ou si le
   contexte WebGL est perdu.
+
+## Assistant vocal Eric
+
+```
+Navigateur ── micro PCM 16 kHz ──> passerelle /ws/assistant (Node, `ws`) ──> Gemini Live (gemini-3.8-live)
+          <── voix PCM 24 kHz, transcriptions ──┘   cookie de session, AuthContext       identifiants serveur
+```
+
+- `scripts/assistant-gateway.ts` démarre `src/server/assistant/gateway.ts`, **processus séparé** de
+  Next.js : l'App Router ne gère pas l'upgrade WebSocket, et le code serveur (`server-only`) se
+  charge avec la condition `react-server`, comme les autres scripts.
+- L'upgrade exige une origine autorisée (`APP_URL`), une session valide (`resolveSessionToken`,
+  module sans dépendance à Next.js) et la permission `assistant:use`. La session est revalidée
+  pendant la conversation ; une seule conversation par utilisateur.
+- `src/server/assistant/live-session.ts` isole Gemini derrière l'interface `LiveConnector`
+  (faux connecteur dans les tests). Reprise de session sur `goAway` grâce à la dernière poignée.
+- **Outils « données »** (`src/server/assistant/data-tools.ts`) : 23 outils en lecture seule
+  (recherche, tableau de bord, événements, stock, disponibilité, réservations, logistique,
+  véhicules, équipe, clients, devis, factures, finances, tâches, maintenance, notifications),
+  déclarés à Gemini depuis leurs schémas Zod. La passerelle les exécute avec l'`AuthContext` de
+  l'utilisateur : contrôle des permissions de l'outil, puis des services (`assertCan`, filtrage
+  par organisation). Les réponses sont compactées (`compact.ts` : heures locales précédées du jour
+  de la semaine, décimaux en texte, listes et textes tronqués, 12 000 caractères au plus). Les
+  erreurs deviennent des codes explicites pour le modèle (`FORBIDDEN`, `NOT_FOUND`,
+  `INVALID_ARGUMENTS`, `TIMEOUT`…). Chaque appel est journalisé dans `AssistantToolCall`
+  (outil, succès, durée : ni arguments ni contenu).
+- **Outils « monde 3D »** (`src/features/assistant/world-tools.ts`, partagé client/serveur) :
+  montrer un objet, aller à une zone, mettre en évidence, localiser un matériel, changer de vue
+  ou de calque, frise, réunion, simulation de chargement, décrire la scène. La passerelle valide
+  les arguments puis envoie un `world_call` au navigateur et attend son `world_result` (5 s) ;
+  `src/three/ui/world-bridge.ts` les exécute sur l'état de `WorldShell` (aucune écriture en base),
+  avec une résolution tolérante des cibles (`scene-targets.ts` : clé, identifiant, nom). Chaque
+  commande renvoie un résultat factuel ; la caméra reste à l'utilisateur pendant la visite à pied
+  et l'agencement. Seuls des codes d'erreur connus sont acceptés du navigateur.
+- **Avatar** (`src/three/objects/eric.tsx`) : régisseur stylisé en primitives (casque-micro),
+  marche vers l'objet montré et le désigne, bouche synchronisée sur l'amplitude de sa voix,
+  anneau d'état (gris au repos, bleu à l'écoute, ambre pendant une consultation, vert quand il
+  parle) ; ne force le rendu (`invalidate`) que lorsqu'il bouge ou converse. Cliquer sur lui
+  ouvre la conversation. Le hook `useAssistant` vit dans `WorldShell` ; le niveau du micro est
+  lu par le panneau seul, pour ne pas re-rendre la scène.
+- **Outils « actions »** (`src/server/assistant/action-tools.ts`) : `prepare` construit l'aperçu
+  depuis la base, la passerelle envoie un `confirm_request` et attend le `confirm_answer` du
+  clic (60 s), relit les droits puis appelle `execute` (mêmes services que les pages). Le
+  panneau affiche les cartes « Confirmer / Refuser » et la scène est rechargée après une action.
+- Protocole (`src/features/assistant/protocol.ts`) : trames binaires = audio, trames texte = JSON
+  validé par Zod. Côté client : `src/assistant/` (micro, lecteur, hook `useAssistant`) et le
+  panneau `src/three/ui/assistant-panel.tsx`.

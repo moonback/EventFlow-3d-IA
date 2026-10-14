@@ -51,6 +51,7 @@ export const PERMISSIONS = [
   "settings:manage",
   "members:manage",
   "audit:read",
+  "assistant:use",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -101,6 +102,7 @@ export const permissionLabels: Record<Permission, string> = {
   "settings:manage": "Paramètres de l'organisation",
   "members:manage": "Gérer les membres et rôles",
   "audit:read": "Consulter le journal d'audit",
+  "assistant:use": "Parler à l'assistant vocal Eric",
 };
 
 const ALL = [...PERMISSIONS];
@@ -132,6 +134,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
       "purchases:write",
       "reports:export",
       "documents:write",
+      "assistant:use",
     ),
   ],
   LOGISTICS_MANAGER: p(
@@ -165,6 +168,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "documents:write",
     "scene:edit",
     "import:run",
+    "assistant:use",
   ),
   STOCK_MANAGER: p(
     "dashboard:read",
@@ -186,6 +190,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "documents:write",
     "scene:edit",
     "import:run",
+    "assistant:use",
   ),
   SALES: p(
     "dashboard:read",
@@ -208,6 +213,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "reports:read",
     "documents:read",
     "documents:write",
+    "assistant:use",
   ),
   ACCOUNTING: p(
     "dashboard:read",
@@ -232,6 +238,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "reports:export",
     "documents:read",
     "documents:write",
+    "assistant:use",
   ),
   TECHNICIAN: p(
     "dashboard:read",
@@ -245,6 +252,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "vehicles:read",
     "staff:read",
     "documents:read",
+    "assistant:use",
   ),
   DRIVER: p(
     "dashboard:read",
@@ -256,8 +264,9 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "vehicles:read",
     "staff:read",
     "documents:read",
+    "assistant:use",
   ),
-  CREW: p("dashboard:read", "events:read", "tasks:write", "inventory:read", "staff:read"),
+  CREW: p("dashboard:read", "events:read", "tasks:write", "inventory:read", "staff:read", "assistant:use"),
   READ_ONLY: READS.filter((perm) => perm !== "finance:read" && perm !== "audit:read"),
 };
 

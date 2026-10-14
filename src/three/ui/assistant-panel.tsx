@@ -1,0 +1,172 @@
+"use client";
+import { AudioLines, Check, Loader2, Mic, MicOff, PhoneOff, Send, TriangleAlert, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import type { AssistantStatus, useAssistant } from "@/assistant/use-assistant";
+import { cn } from "@/lib/utils";
+
+const STATUS_LABELS: Record<AssistantStatus, string> = {
+  idle: "Hors ligne",
+  connecting: "Connexion…",
+  listening: "À l'écoute",
+  speaking: "Eric parle",
+  error: "Indisponible",
+};
+
+const CONSENT_KEY = "eventflow.assistant.consent";
+
+function readConsent() {
+  try {
+    return window.localStorage.getItem(CONSENT_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** Panneau de conversation avec Eric (coin inférieur droit de la scène). */
+export function AssistantPanel({ assistant: a, open, onOpenChange: setOpen }: { assistant: ReturnType<typeof useAssistant>; open: boolean; onOpenChange: (open: boolean) => void }) {
+  const [draft, setDraft] = useState("");
+  const [consent, setConsent] = useState(false);
+  const scroller = useRef<HTMLDivElement>(null);
+  useEffect(() => setConsent(readConsent()), []);
+  // Niveau du micro lu à ~15 images/s, localement : seul le panneau se redessine
+  const [micLevel, setMicLevel] = useState(0);
+  const micOn = a.micOn;
+  const readLevel = a.micLevel;
+  useEffect(() => {
+    if (!micOn) return setMicLevel(0);
+    const t = setInterval(() => setMicLevel(Math.round(readLevel() * 20) / 20), 66);
+    return () => clearInterval(t);
+  }, [micOn, readLevel]);
+  useEffect(() => {
+    scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
+  }, [a.lines]);
+
+  const connected = a.status === "listening" || a.status === "speaking" || a.status === "connecting";
+
+  const start = () => {
+    if (!consent) {
+      try {
+        window.localStorage.setItem(CONSENT_KEY, "1");
+      } catch {
+        // stockage indisponible : le consentement sera redemandé
+      }
+      setConsent(true);
+    }
+    void a.start();
+  };
+
+  if (!open) {
+    return (
+      <Button className="absolute right-3 bottom-3 z-10 rounded-full shadow-lg" onClick={() => setOpen(true)} aria-label="Ouvrir la conversation avec Eric">
+        <AudioLines /> Parler à Eric
+      </Button>
+    );
+  }
+
+  return (
+    <section className="absolute right-3 bottom-3 z-10 flex max-h-[min(460px,calc(100%-1.5rem))] w-[min(340px,calc(100%-1.5rem))] flex-col rounded-xl border border-border bg-background/95 text-sm shadow-lg backdrop-blur" aria-label="Conversation avec Eric">
+      <header className="flex items-center gap-2 border-b border-border px-3 py-2">
+        <span
+          className={cn(
+            "size-2.5 rounded-full",
+            a.status === "speaking" ? "animate-pulse bg-success" : a.status === "listening" ? "bg-info" : a.status === "connecting" ? "animate-pulse bg-warning" : a.status === "error" ? "bg-destructive" : "bg-muted-foreground",
+          )}
+          aria-hidden
+        />
+        <span className="font-medium">Eric</span>
+        <span className="text-xs text-muted-foreground" role="status">
+          {STATUS_LABELS[a.status]}
+        </span>
+        <Button size="icon-sm" variant="ghost" className="ml-auto" onClick={() => setOpen(false)} aria-label="Réduire la conversation">
+          <X />
+        </Button>
+      </header>
+
+      <div ref={scroller} className="flex min-h-24 flex-1 flex-col gap-2 overflow-y-auto px-3 py-2" aria-live="polite">
+        {a.lines.length === 0 ? (
+          <p className="text-xs text-muted-foreground">
+            {connected ? "Parlez, Eric vous écoute. Vous pouvez lui couper la parole à tout moment." : "Eric, le régisseur virtuel, répond à la voix en temps réel sur vos événements, le stock, les véhicules, l'équipe et les finances."}
+          </p>
+        ) : (
+          a.lines.map((l) => (
+            <p key={l.id} className={cn("max-w-[85%] rounded-lg px-2.5 py-1.5", l.role === "user" ? "self-end bg-primary text-primary-foreground" : "self-start bg-muted")}>
+              <span className="sr-only">{l.role === "user" ? "Vous : " : "Eric : "}</span>
+              {l.text}
+            </p>
+          ))
+        )}
+        {a.activity ? (
+          <p className="flex items-center gap-1.5 self-start text-xs text-muted-foreground">
+            <Loader2 className="size-3 animate-spin" aria-hidden /> Eric consulte {a.activity}…
+          </p>
+        ) : null}
+        {a.confirmations.map((c) => (
+          <div key={c.id} role="group" aria-label={`Action proposée : ${c.title}`} className={cn("flex flex-col gap-1.5 rounded-lg border p-2.5 text-xs", c.danger ? "border-warning/60 bg-warning/10" : "border-primary/40 bg-primary/5")}>
+            <p className="flex items-center gap-1.5 font-medium text-foreground">
+              {c.danger ? <TriangleAlert className="size-3.5 text-warning" aria-hidden /> : null}
+              Eric propose : {c.title}
+            </p>
+            <ul className="flex flex-col gap-0.5 text-muted-foreground">
+              {c.details.map((d) => (
+                <li key={d}>{d}</li>
+              ))}
+            </ul>
+            {c.outcome ? (
+              <p className={cn("font-medium", c.outcome.kind === "done" ? "text-success" : c.outcome.kind === "failed" ? "text-destructive" : "text-muted-foreground")} role="status">
+                {c.outcome.message}
+              </p>
+            ) : (
+              <div className="flex gap-1.5">
+                <Button size="sm" variant={c.danger ? "destructive" : "default"} onClick={() => a.answer(c.id, true)}>
+                  <Check /> Confirmer
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => a.answer(c.id, false)}>
+                  Refuser
+                </Button>
+              </div>
+            )}
+          </div>
+        ))}
+        {a.error ? <p className="text-xs text-destructive">{a.error}</p> : null}
+      </div>
+
+      {connected ? (
+        <footer className="flex flex-col gap-2 border-t border-border p-2">
+          <form
+            className="flex gap-1"
+            onSubmit={(e) => {
+              e.preventDefault();
+              a.sendText(draft);
+              setDraft("");
+            }}
+          >
+            <Input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Écrire à Eric…" className="h-8" aria-label="Message à Eric" maxLength={2000} />
+            <Button type="submit" size="icon-sm" variant="outline" disabled={!draft.trim() || a.status === "connecting"} aria-label="Envoyer">
+              <Send />
+            </Button>
+          </form>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant={a.micOn ? "secondary" : "outline"} onClick={a.toggleMic} aria-pressed={a.micOn} disabled={a.status === "connecting"}>
+              {a.micOn ? <Mic /> : <MicOff />} {a.micOn ? "Micro actif" : "Micro coupé"}
+            </Button>
+            <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted" aria-hidden>
+              <span className="block h-full bg-info transition-[width] duration-75" style={{ width: `${micLevel * 100}%` }} />
+            </span>
+            <Button size="icon-sm" variant="destructive" onClick={a.stop} aria-label="Raccrocher">
+              <PhoneOff />
+            </Button>
+          </div>
+        </footer>
+      ) : (
+        <footer className="flex flex-col gap-2 border-t border-border p-2">
+          {!consent ? <p className="text-xs text-muted-foreground">Votre voix et vos messages sont transmis à Google Gemini pour être traités.</p> : null}
+          <Button onClick={start}>
+            <Mic /> {a.status === "error" ? "Réessayer" : "Démarrer la conversation"}
+          </Button>
+        </footer>
+      )}
+    </section>
+  );
+}

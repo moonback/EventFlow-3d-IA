@@ -31,6 +31,7 @@ import { PresenceAvatars, PresenceSync, type PresenceUser } from "../objects/pre
 import { WalkControls } from "./walk-controls";
 import { SitePlanView } from "../site/site-plan-view";
 import { WeekBoard } from "../objects/week-board";
+import { Eric, type EricProps } from "../objects/eric";
 import { AmbienceContext, computeAmbience, useAppTheme, type Ambience } from "../materials/ambience";
 import { setGlowBoost, STATUS_COLORS, STATUS_LABELS } from "../materials/palette";
 import type { Lighting, Quality } from "../ui/quality";
@@ -91,6 +92,8 @@ interface Props {
   presence?: { page: string; others: PresenceUser[]; onOthers: (others: PresenceUser[]) => void } | null;
   /** Lecture du point de vue courant (enregistrement / partage d'un point de vue) */
   cameraProbe?: RefObject<CameraReader | null>;
+  /** Assistant vocal Eric, présent dans la scène (absent si l'assistant n'est pas activé) */
+  eric?: EricProps | null;
   /** Prévenu quand la qualité est réduite automatiquement faute de performances */
   onQualityDegraded?: (effective: Quality) => void;
   /** Affiche des pastilles cliquables au-dessus de chaque zone (vue tableau de bord). */
@@ -343,7 +346,7 @@ function FirstFrame({ onFirst }: { onFirst: () => void }) {
  * Scène 3D : n'écrit jamais en base. La sélection renvoie l'identité métier (type:identifiant)
  * au shell, qui interroge le serveur ; la scène n'est rafraîchie qu'après confirmation serveur.
  */
-export default function WorldScene({ data, selectedKey, highlighted, focus, editMode, onSelect, onMove, onContextLost, onZoneClick, routeTo, overlay = null, quality = "medium", lighting = "auto", onQualityDegraded, walk = false, onExitWalk, overrides, snap = null, loadingSim = null, presence = null, meeting = null, cameraProbe }: Props) {
+export default function WorldScene({ data, selectedKey, highlighted, focus, editMode, onSelect, onMove, onContextLost, onZoneClick, routeTo, overlay = null, quality = "medium", lighting = "auto", onQualityDegraded, walk = false, onExitWalk, overrides, snap = null, loadingSim = null, presence = null, meeting = null, cameraProbe, eric = null }: Props) {
   const [keyboardKey, setKeyboardKey] = useState<string | null>(null);
   const [degraded, setDegraded] = useState(false);
   const [firstFrame, setFirstFrame] = useState(false);
@@ -468,6 +471,7 @@ export default function WorldScene({ data, selectedKey, highlighted, focus, edit
           {overlay === "heat" ? <HeatTiles items={data.items} /> : null}
           {overlay === "count" ? <CountMarkers items={data.items} /> : null}
           <EventLinks items={data.items} selectedKey={selectedKey} />
+          {eric && !walk ? <Eric {...eric} /> : null}
           <PreparationFlows items={data.items} />
           {presence ? (
             <>
