@@ -72,6 +72,10 @@ export function WorldShell({ canEditLayout, canCount, canDuplicate, assistant = 
   const [mode, setMode] = useState<"3d" | "plan">(params.get("mode") === "plan" ? "plan" : "3d");
   const [webgl, setWebgl] = useState<{ supported: boolean; reason?: string } | null>(null);
   const [sceneError, setSceneError] = useState<string | null>(null);
+  // Récupération après perte du contexte WebGL : remontage de la scène en qualité réduite (2 essais) avant le secours 2D
+  const [sceneAttempt, setSceneAttempt] = useState(0);
+  const [recoveryQuality, setRecoveryQuality] = useState<Quality | null>(null);
+  const contextLosses = useRef<number[]>([]);
   const [selectedKey, setSelectedKey] = useState<string | null>(params.get("focus"));
   const [focus, setFocus] = useState<FocusTarget>(() => {
     const f = params.get("focus");
@@ -161,6 +165,25 @@ export function WorldShell({ canEditLayout, canCount, canDuplicate, assistant = 
   }, [data, pending]);
   const selected = useMemo(() => data?.items.find((i) => i.key === selectedKey) ?? null, [data, selectedKey]);
   const use3d = mode === "3d" && webgl?.supported && !sceneError;
+  useEffect(() => setRecoveryQuality(null), [quality]); // un nouveau choix de l'utilisateur annule la qualité de secours
+  const onContextLost = useCallback(() => {
+    const now = Date.now();
+    // Seules les pertes des 2 dernières minutes comptent : une perte isolée (veille, pilote) ne condamne pas la 3D
+    contextLosses.current = [...contextLosses.current.filter((t) => now - t < 120_000), now];
+    if (contextLosses.current.length > 2) {
+      setSceneError("Le contexte WebGL a été perdu à plusieurs reprises");
+      return;
+    }
+    setRecoveryQuality((q) => ((q ?? quality) === "high" ? "medium" : "low"));
+    setSceneAttempt((n) => n + 1);
+    toast.info("Le rendu 3D a été interrompu par la carte graphique : relance en qualité réduite");
+  }, [quality]);
+  const retry3d = () => {
+    contextLosses.current = [];
+    setRecoveryQuality("low");
+    setSceneError(null);
+    setSceneAttempt((n) => n + 1);
+  };
   const countList = useMemo(() => (data?.items ?? []).filter((i) => i.count?.today).sort((a, b) => Number(a.count!.done) - Number(b.count!.done) || a.label.localeCompare(b.label)), [data]);
   const hasStock = Boolean(data?.items.some((i) => i.kind === "STOCK_LOCATION"));
 
@@ -527,8 +550,9 @@ export function WorldShell({ canEditLayout, canCount, canDuplicate, assistant = 
               <Loader2 className="size-4 animate-spin" /> Chargement des données réelles…
             </div>
           ) : use3d ? (
-            <SceneErrorBoundary onError={(m) => setSceneError(m)}>
+            <SceneErrorBoundary key={sceneAttempt} onError={(m) => setSceneError(m)}>
               <WorldScene
+                key={sceneAttempt}
                 data={data}
                 selectedKey={selectedKey}
                 highlighted={highlighted}
@@ -539,11 +563,11 @@ export function WorldShell({ canEditLayout, canCount, canDuplicate, assistant = 
                   const item = data.items.find((i) => i.key === key);
                   if (item) change(key, { position, rotationY: placementOf(item).rotationY });
                 }}
-                onContextLost={() => setSceneError("Le contexte WebGL a été perdu")}
+                onContextLost={onContextLost}
                 onZoneClick={(zone) => setFocus({ kind: "zone", zone })}
                 routeTo={routeKey}
                 overlay={overlay}
-                quality={quality}
+                quality={recoveryQuality ?? quality}
                 lighting={lighting}
                 onQualityDegraded={setDegradedTo}
                 walk={walk}
@@ -562,6 +586,13 @@ export function WorldShell({ canEditLayout, canCount, canDuplicate, assistant = 
               {mode === "3d" ? (
                 <Alert tone="warning" className="m-3" title="Mode de secours 2D">
                   {sceneError ? `Le rendu 3D a rencontré une erreur (${sceneError}).` : webgl.reason} Toutes les fonctionnalités restent disponibles via le plan ci-dessous et les pages classiques.
+                  {sceneError && webgl.supported ? (
+                    <div className="mt-2">
+                      <Button size="sm" variant="secondary" onClick={retry3d}>
+                        <RefreshCw /> Réessayer la 3D (qualité basse)
+                      </Button>
+                    </div>
+                  ) : null}
                 </Alert>
               ) : null}
               <div className="min-h-0 flex-1 p-3">

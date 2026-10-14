@@ -350,6 +350,9 @@ export default function WorldScene({ data, selectedKey, highlighted, focus, edit
   const [keyboardKey, setKeyboardKey] = useState<string | null>(null);
   const [degraded, setDegraded] = useState(false);
   const [firstFrame, setFirstFrame] = useState(false);
+  // Le gestionnaire est posé une seule fois à la création du contexte : toujours appeler le dernier rappel
+  const onContextLostRef = useRef(onContextLost);
+  onContextLostRef.current = onContextLost;
   useEffect(() => setDegraded(false), [quality]); // un nouveau choix de l'utilisateur annule la dégradation automatique
   const effective: Quality = degraded && quality !== "low" ? (quality === "high" ? "medium" : "low") : quality;
   useEffect(() => {
@@ -400,7 +403,7 @@ export default function WorldScene({ data, selectedKey, highlighted, focus, edit
         onCreated={({ gl }) => {
           gl.domElement.addEventListener("webglcontextlost", (e) => {
             e.preventDefault();
-            onContextLost();
+            onContextLostRef.current();
           });
         }}
         onPointerMissed={() => onSelect(null)}
