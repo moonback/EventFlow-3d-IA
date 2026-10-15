@@ -3,11 +3,11 @@ import { Menu, X } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { NAV_SECTIONS } from "./nav";
 
-function NavLinks({ permissions, onNavigate }: { permissions: string[]; onNavigate?: () => void }) {
+function NavLinks({ permissions, onNavigate, collapsed = false }: { permissions: string[]; onNavigate?: () => void; collapsed?: boolean }) {
   const pathname = usePathname();
   const sections = NAV_SECTIONS.map((section) => ({ ...section, items: section.items.filter((i) => permissions.includes(i.permission)) })).filter((s) => s.items.length > 0);
   return (
@@ -24,14 +24,15 @@ function NavLinks({ permissions, onNavigate }: { permissions: string[]; onNaviga
                     href={item.href}
                     onClick={onNavigate}
                     aria-current={active ? "page" : undefined}
+                    title={collapsed ? item.label : undefined}
                     className={cn(
                       "group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-sidebar-foreground transition-colors hover:bg-white/5 hover:text-foreground",
                       active && "bg-gradient-to-r from-blue-600/90 to-indigo-600/70 font-medium text-white shadow-lg shadow-blue-900/30 hover:bg-transparent hover:text-white",
                     )}
                   >
                     <item.icon className={cn("size-[18px] shrink-0 text-sidebar-foreground/70 group-hover:text-foreground", active && "text-white group-hover:text-white")} aria-hidden />
-                    <span className="truncate">{item.label}</span>
-                    {item.shortcut ? <kbd className={cn("ml-auto hidden text-[10px] text-muted-foreground/50 opacity-0 transition-opacity group-hover:opacity-100 xl:inline", active && "text-white/60")}>g {item.shortcut}</kbd> : null}
+                    <span className={cn("truncate transition-opacity duration-200", collapsed && "opacity-0")}>{item.label}</span>
+                    {item.shortcut && !collapsed ? <kbd className={cn("ml-auto hidden text-[10px] text-muted-foreground/50 opacity-0 transition-opacity group-hover:opacity-100 xl:inline", active && "text-white/60")}>g {item.shortcut}</kbd> : null}
                   </Link>
                 </li>
               );
@@ -43,13 +44,13 @@ function NavLinks({ permissions, onNavigate }: { permissions: string[]; onNaviga
   );
 }
 
-function Brand() {
+function Brand({ collapsed = false }: { collapsed?: boolean }) {
   return (
     <Link href="/dashboard" className="flex items-center gap-3 px-3" aria-label="EventFlow — accueil">
-      <span className="relative flex size-10 items-center justify-center overflow-hidden rounded-xl  shadow-lg shadow-indigo-900/40">
+      <span className="relative flex size-10 items-center justify-center overflow-hidden shrink-0 rounded-xl shadow-lg shadow-indigo-900/40">
         <Image src="/Images/logo.png" alt="" width={40} height={40} className="size-full object-contain" priority />
       </span>
-      <span className="flex flex-col leading-tight">
+      <span className={cn("flex flex-col leading-tight whitespace-nowrap transition-opacity duration-200", collapsed && "opacity-0")}>
         <span className="text-xl font-semibold tracking-tight">
           Event<span className="text-blue-400">Flow</span>
         </span>
@@ -94,15 +95,64 @@ function ProjectCard({ canCreate }: { canCreate: boolean }) {
   );
 }
 
+/**
+ * Barre latérale repliée automatiquement en rail d'icônes : elle se déploie au survol (ou au
+ * clavier) par-dessus le contenu, et se range dès que la souris la quitte ou après une navigation.
+ */
 export function Sidebar({ permissions }: { permissions: string[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const pathname = usePathname();
+
+  const cancelClose = () => {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    closeTimer.current = null;
+  };
+  const open = () => {
+    cancelClose();
+    setExpanded(true);
+  };
+  // Léger délai : évite un repli intempestif quand la souris frôle le bord
+  const scheduleClose = () => {
+    cancelClose();
+    closeTimer.current = setTimeout(() => setExpanded(false), 250);
+  };
+  const collapseNow = () => {
+    cancelClose();
+    setExpanded(false);
+    (document.activeElement as HTMLElement | null)?.blur();
+  };
+
+  // Changement de page (lien, raccourci clavier, recherche) : la barre se range
+  useEffect(() => setExpanded(false), [pathname]);
+  useEffect(() => cancelClose, []);
+
   return (
-    <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col gap-6 overflow-y-auto border-r border-sidebar-border bg-sidebar py-5 scrollbar-thin lg:flex">
-      <Brand />
-      <div className="px-3">
-        <NavLinks permissions={permissions} />
-      </div>
-      <div className="mt-auto">
-        <ProjectCard canCreate={permissions.includes("events:write")} />
+    <aside className="sticky top-0 z-40 hidden h-dvh w-[72px] shrink-0 lg:block" aria-label="Barre latérale">
+      <div
+        ref={panel}
+        onMouseEnter={open}
+        onMouseLeave={scheduleClose}
+        onFocus={open}
+        onBlur={(e) => {
+          if (!panel.current?.contains(e.relatedTarget as Node | null)) scheduleClose();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") collapseNow();
+        }}
+        className={cn(
+          "absolute inset-y-0 left-0 flex flex-col gap-6 overflow-x-hidden overflow-y-auto border-r border-sidebar-border bg-sidebar py-5 scrollbar-thin transition-[width,box-shadow] duration-200 ease-out",
+          expanded ? "w-64 shadow-2xl shadow-black/40" : "w-[72px]",
+        )}
+      >
+        <Brand collapsed={!expanded} />
+        <div className="px-3">
+          <NavLinks permissions={permissions} collapsed={!expanded} onNavigate={collapseNow} />
+        </div>
+        <div className={cn("mt-auto w-64 transition-opacity duration-200", expanded ? "opacity-100" : "pointer-events-none opacity-0")} inert={!expanded}>
+          <ProjectCard canCreate={permissions.includes("events:write")} />
+        </div>
       </div>
     </aside>
   );

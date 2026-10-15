@@ -1,5 +1,5 @@
 "use client";
-import { Box, CalendarRange, Presentation, ChevronLeft, ChevronRight, Pause, Play, Truck, CheckCircle2, ClipboardCheck, Copy, Flame, Grid3x3, Layers, Loader2, Map as MapIcon, Move3d, PencilRuler, PersonStanding, RefreshCw, RotateCw, Save, Search, Tv, Undo2, X } from "lucide-react";
+import { Box, CalendarRange, Presentation, ChevronLeft, ChevronRight, Pause, Play, Truck, CheckCircle2, ClipboardCheck, Copy, Flame, Grid3x3, Info, Layers, Loader2, Map as MapIcon, Move3d, PencilRuler, PersonStanding, RefreshCw, RotateCw, Save, Search, Tv, Undo2, X } from "lucide-react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
@@ -22,7 +22,7 @@ import { LayoutHistory } from "./layout-history";
 import { decodeView, ViewBookmarks } from "./view-bookmarks";
 import { AnimationsMenu } from "./animations-menu";
 import { useAssistant } from "@/assistant/use-assistant";
-import { AssistantPanel } from "./assistant-panel";
+import { activateOrToggleEric, AssistantPanel } from "./assistant-panel";
 import { createWorldBridge, ERIC_HOME, type EricSpot, type WorldBridgeDeps } from "./world-bridge";
 import { Plan2D } from "./plan-2d";
 import { LIGHTING_LABELS, QUALITY_LABELS, useLighting, useQuality, type Lighting, type Quality } from "./quality";
@@ -252,6 +252,7 @@ export function WorldShell({ canEditLayout, canCount, canDuplicate, assistant = 
   // ── Assistant Eric : pont vers la scène (état lu au moment de chaque commande) ──
   const [ericSpot, setEricSpot] = useState<EricSpot>(ERIC_HOME);
   const [ericOpen, setEricOpen] = useState(false);
+  const [legendOpen, setLegendOpen] = useState(false);
   const simulateLoading = useCallback(async (item: SceneItem) => {
     const d = await apiFetch<{ loadingPlan?: { event: string; steps: { step: number; name: string; quantity: number; volume: number | null; color?: string | null; zone: string }[] } | null }>(`/api/scene/objects/VEHICLE/${item.businessId}`);
     const plan = d.loadingPlan;
@@ -293,9 +294,10 @@ export function WorldShell({ canEditLayout, canCount, canDuplicate, assistant = 
   useEffect(() => {
     if (pendingConfirmations) setEricOpen(true);
   }, [pendingConfirmations]);
+  const ericStart = eric.start;
   const ericInScene = useMemo(
-    () => (assistant ? { spot: ericSpot, status: eric.status, thinking: eric.activity !== null, level: eric.voiceLevel, onClick: () => setEricOpen((o) => !o) } : null),
-    [assistant, ericSpot, eric.status, eric.activity, eric.voiceLevel],
+    () => (assistant ? { spot: ericSpot, status: eric.status, thinking: eric.activity !== null, level: eric.voiceLevel, onClick: () => activateOrToggleEric(eric.status, ericStart, () => setEricOpen((o) => !o)) } : null),
+    [assistant, ericSpot, eric.status, eric.activity, eric.voiceLevel, ericStart],
   );
 
   // ── Agencement : modifications en attente, annulation, rotation, duplication ──
@@ -799,9 +801,24 @@ export function WorldShell({ canEditLayout, canCount, canDuplicate, assistant = 
             </div>
           ) : null}
 
-          {/* Légende */}
-          {data ? (
-            <div className="pointer-events-none absolute bottom-3 left-3 flex max-w-xs flex-col gap-1 rounded-lg border border-border bg-background/85 p-2.5 text-[11px] backdrop-blur">
+          {/* Légende (repliée par défaut) */}
+          {data && !legendOpen ? (
+            <div className="absolute bottom-3 left-3 z-10 flex max-w-xs flex-col items-start gap-1.5">
+              {degradedTo ? <span className="rounded-md border border-warning/40 bg-background/90 px-2 py-1 text-[11px] text-warning backdrop-blur">Qualité réduite à « {QUALITY_LABELS[degradedTo]} »</span> : null}
+              {editMode ? <span className="rounded-md border border-warning/40 bg-background/90 px-2 py-1 text-[11px] text-warning backdrop-blur">Mode agencement : glisser · R tourner · Ctrl+Z annuler</span> : null}
+              <Button size="sm" variant="outline" className="rounded-full bg-background/85 shadow-sm backdrop-blur" onClick={() => setLegendOpen(true)} aria-expanded={false} aria-label="Afficher la légende">
+                <Info /> Légende
+              </Button>
+            </div>
+          ) : null}
+          {data && legendOpen ? (
+            <div className="pointer-events-none absolute bottom-3 left-3 z-10 flex max-w-xs flex-col gap-1 rounded-lg border border-border bg-background/85 p-2.5 text-[11px] backdrop-blur">
+              <div className="pointer-events-auto -mt-1 -mr-1 mb-0.5 flex items-center justify-between">
+                <span className="font-medium text-foreground">Légende</span>
+                <Button size="icon-sm" variant="ghost" className="size-6" onClick={() => setLegendOpen(false)} aria-expanded aria-label="Masquer la légende">
+                  <X />
+                </Button>
+              </div>
               {(Object.keys(STATUS_COLORS) as (keyof typeof STATUS_COLORS)[]).map((s) => {
                 const count = data.items.filter((i) => i.status === s).length;
                 return (
